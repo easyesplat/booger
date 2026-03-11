@@ -217,6 +217,20 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
         DEFAULT_KEY_HOLD_DURATION_MS,
     });
 
+    const handleMessage = (event: MessageEvent) => {
+      console.log("Message received", event.data);
+      if ( typeof event.data != 'string' ) return;
+      switch (event.data) {
+        case "beginSelection":
+          actions.setWasActivatedByToggle(true);
+          actions.activate();
+          break;
+      }
+    };
+
+    // Handle messages from parent site when this site is loaded in an iframe
+    window.addEventListener('message', handleMessage);
+
     const isHoldingKeys = createMemo(() => store.current.state === "holding");
 
     const isActivated = createMemo(() => store.current.state === "active");

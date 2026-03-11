@@ -91,6 +91,13 @@ interface ClipboardData {
   lexicalData: string;
 }
 
+interface SelectionData {
+  plainText: string;
+  htmlContent: string;
+  lexicalData: string;
+  reactGrabMetadata: string;
+}
+
 // HACK: Cursor's Lexical editor only reads content from registered commands/files,
 // not from embedded clipboard data. We include the content after the mention chip
 // so Cursor can actually read it.
@@ -166,6 +173,11 @@ export const copyContent = (
     timestamp: Date.now(),
   };
 
+  // Send message to parent site when loaded in iframe
+  const notifyPlatform = (packet : SelectionData) => {
+    window.parent.postMessage(packet, '*'); 
+  }
+
   const copyHandler = (event: ClipboardEvent) => {
     event.preventDefault();
     event.clipboardData?.setData("text/plain", plainText);
@@ -193,6 +205,14 @@ export const copyContent = (
     }
     const didCopySucceed = document.execCommand("copy");
     if (didCopySucceed) {
+      const selectionData : SelectionData = {
+        plainText: plainText,
+        htmlContent: htmlContent,
+        lexicalData: lexicalData,
+        reactGrabMetadata: JSON.stringify(reactGrabMetadata)
+      }
+      notifyPlatform(selectionData); // send all captured clipboard/selection data to parent site
+
       options?.onSuccess?.();
     }
     return didCopySucceed;
