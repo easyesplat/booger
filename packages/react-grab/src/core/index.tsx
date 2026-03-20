@@ -225,6 +225,9 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
           actions.setWasActivatedByToggle(true);
           actions.activate();
           break;
+        case "cancelSelection":
+          actions.deactivate();
+          break;
       }
     };
 

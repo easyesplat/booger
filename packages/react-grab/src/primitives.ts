@@ -45,7 +45,9 @@ export const getElementContext = async (
   element: Element,
 ): Promise<ReactGrabElementContext> => {
   const stack = (await getStack(element)) ?? [];
-  const stackString = await getStackContext(element);
+  const stackContext = await getStackContext(element);
+  const stackString =
+    stackContext.length > 0 ? "\n  in " + stackContext.join("\n  in ") : "";
   const htmlPreview = getHTMLPreview(element);
   const componentName = getComponentDisplayName(element);
   const fiber = getFiberFromHostInstance(element);

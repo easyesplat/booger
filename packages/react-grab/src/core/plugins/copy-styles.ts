@@ -20,7 +20,11 @@ export const copyStylesPlugin: Plugin = {
           void api
             .getStackContext(element)
             .then((stackContext) => {
-              copyContent(appendStackContext(extractedCss, stackContext));
+              const formattedStack =
+                stackContext.length > 0
+                  ? "\n  in " + stackContext.join("\n  in ")
+                  : "";
+              copyContent(appendStackContext(extractedCss, formattedStack));
             })
             // HACK: Best-effort copy from element select; failure is non-critical
             .catch(() => {});
@@ -44,8 +48,12 @@ export const copyStylesPlugin: Plugin = {
                 .join("\n\n");
 
               const stackContext = await api.getStackContext(context.element);
+              const formattedStack =
+                stackContext.length > 0
+                  ? "\n  in " + stackContext.join("\n  in ")
+                  : "";
               return copyContent(
-                appendStackContext(combinedCss, stackContext),
+                appendStackContext(combinedCss, formattedStack),
                 {
                   componentName: context.componentName,
                   tagName: context.tagName,

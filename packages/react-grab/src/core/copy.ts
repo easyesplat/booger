@@ -10,11 +10,14 @@ interface CopyOptions {
 
 interface CopyHooks {
   onBeforeCopy: (elements: Element[]) => Promise<void>;
-  transformSnippet: (snippet: string, element: Element) => Promise<string>;
+  transformSnippet: (
+    snippet: [string, string[]],
+    element: Element,
+  ) => Promise<[string, string[]]>;
   transformCopyContent: (
-    content: string,
+    content: string | [string, string[]][],
     elements: Element[],
-  ) => Promise<string>;
+  ) => Promise<string | [string, string[]][]>;
   onAfterCopy: (elements: Element[], success: boolean) => void;
   onCopySuccess: (elements: Element[], content: string) => void;
   onCopyError: (error: Error) => void;
@@ -32,50 +35,52 @@ export const tryCopyWithFallback = async (
   await hooks.onBeforeCopy(elements);
 
   try {
-    let generatedContent: string;
+    let generatedContent: string | [string, string[]][];
     let entries: ReactGrabEntry[] | undefined;
 
     if (options.getContent) {
       generatedContent = await options.getContent(elements);
     } else {
       const rawSnippets = await generateSnippet(elements, {
-        maxLines: options.maxContextLines,
+        maxLines: 100, //options.maxContextLines,
       });
       const transformedSnippets = await Promise.all(
         rawSnippets.map((snippet, index) =>
-          snippet.trim()
+          snippet[0].trim() || snippet[1].length > 0
             ? hooks.transformSnippet(snippet, elements[index])
-            : Promise.resolve(""),
+            : Promise.resolve(["", []] as [string, string[]]),
         ),
       );
       const snippetElementPairs = transformedSnippets
         .map((snippet, index) => ({ snippet, element: elements[index] }))
-        .filter(({ snippet }) => snippet.trim());
+        .filter(({ snippet }) => snippet[0].trim() || snippet[1].length > 0);
 
-      generatedContent = joinSnippets(
-        snippetElementPairs.map(({ snippet }) => snippet),
-      );
+      generatedContent = snippetElementPairs.map(({ snippet }) => snippet);
       entries = snippetElementPairs.map(({ snippet, element }) => ({
         tagName: element.localName,
-        content: snippet,
+        content: snippet[0] + "\n  in " + snippet[1].join("\n  in "),
         commentText: extraPrompt,
       }));
     }
 
-    if (generatedContent.trim()) {
+    if (
+      (Array.isArray(generatedContent) && generatedContent.length > 0) ||
+      (typeof generatedContent === "string" && generatedContent.trim())
+    ) {
       const transformedContent = await hooks.transformCopyContent(
         generatedContent,
         elements,
       );
 
-      copiedContent = extraPrompt
-        ? `${extraPrompt}\n\n${transformedContent}`
-        : transformedContent;
-
-      didCopy = copyContent(copiedContent, {
+      didCopy = copyContent(transformedContent, {
         componentName: options.componentName,
         entries,
+        extraPrompt,
       });
+
+      copiedContent = Array.isArray(transformedContent)
+        ? joinSnippets(transformedContent)
+        : transformedContent;
     }
   } catch (error) {
     const resolvedError =

@@ -18,7 +18,11 @@ export const copyHtmlPlugin: Plugin = {
           ])
             .then(([transformedHtml, stackContext]) => {
               if (!transformedHtml) return;
-              copyContent(appendStackContext(transformedHtml, stackContext));
+              const formattedStack =
+                stackContext.length > 0
+                  ? "\n  in " + stackContext.join("\n  in ")
+                  : "";
+              copyContent(appendStackContext(transformedHtml, formattedStack));
             })
             // HACK: Best-effort copy from element select; failure is non-critical
             .catch(() => {});
@@ -49,8 +53,12 @@ export const copyHtmlPlugin: Plugin = {
               if (!transformedHtml) return false;
 
               const stackContext = await api.getStackContext(context.element);
+              const formattedStack =
+                stackContext.length > 0
+                  ? "\n  in " + stackContext.join("\n  in ")
+                  : "";
               return copyContent(
-                appendStackContext(transformedHtml, stackContext),
+                appendStackContext(transformedHtml, formattedStack),
                 {
                   componentName: context.componentName,
                   tagName: context.tagName,

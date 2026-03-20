@@ -446,89 +446,79 @@ const getComponentNamesFromFiber = (
   return componentNames;
 };
 
-export const formatStackContext = (
-  stack: StackFrame[],
-  options: StackContextOptions = {},
-): string => {
-  const { maxLines = DEFAULT_MAX_CONTEXT_LINES } = options;
+export const formatStackFrame = (frame: StackFrame): string => {
   const isNextProject = checkIsNextProject();
-  const stackContext: string[] = [];
+  const hasResolvedSource = frame.fileName && isSourceFile(frame.fileName);
 
-  for (const frame of stack) {
-    if (stackContext.length >= maxLines) break;
-
-    const hasResolvedSource = frame.fileName && isSourceFile(frame.fileName);
-
-    if (
-      frame.isServer &&
-      !hasResolvedSource &&
-      (!frame.functionName || checkIsSourceComponentName(frame.functionName))
-    ) {
-      stackContext.push(
-        `\n  in ${frame.functionName || "<anonymous>"} (at Server)`,
-      );
-      continue;
-    }
-
-    if (hasResolvedSource) {
-      let line = "\n  in ";
-      const hasComponentName =
-        frame.functionName && checkIsSourceComponentName(frame.functionName);
-
-      if (hasComponentName) {
-        line += `${frame.functionName} (at `;
-      }
-
-      line += normalizeFileName(frame.fileName!);
-
-      // HACK: bundlers like vite mess up the line/column numbers, so we don't show them
-      if (isNextProject && frame.lineNumber && frame.columnNumber) {
-        line += `:${frame.lineNumber}:${frame.columnNumber}`;
-      }
-
-      if (hasComponentName) {
-        line += `)`;
-      }
-
-      stackContext.push(line);
-    }
+  if (
+    frame.isServer &&
+    !hasResolvedSource &&
+    (!frame.functionName || checkIsSourceComponentName(frame.functionName))
+  ) {
+    return `${frame.functionName || "<anonymous>"} (at Server)`;
   }
 
-  return stackContext.join("");
-};
+  if (hasResolvedSource) {
+    let line = "";
+    const hasComponentName =
+      frame.functionName && checkIsSourceComponentName(frame.functionName);
 
-export const getStackContext = async (
-  element: Element,
-  options: StackContextOptions = {},
-): Promise<string> => {
-  const maxLines = options.maxLines ?? DEFAULT_MAX_CONTEXT_LINES;
-  const stack = await getStack(element);
+    if (hasComponentName) {
+      line += `${frame.functionName} (at `;
+    }
 
-  if (stack && hasSourceFiles(stack)) {
-    return formatStackContext(stack, options);
-  }
+    line += normalizeFileName(frame.fileName!);
 
-  const componentNames = getComponentNamesFromFiber(element, maxLines);
-  if (componentNames.length > 0) {
-    return componentNames.map((name) => `\n  in ${name}`).join("");
+    // HACK: bundlers like vite mess up the line/column numbers, so we don't show them
+    if (isNextProject && frame.lineNumber && frame.columnNumber) {
+      line += `:${frame.lineNumber}:${frame.columnNumber}`;
+    }
+
+    if (hasComponentName) {
+      line += `)`;
+    }
+
+    return line;
   }
 
   return "";
 };
 
+export const getStackContext = async (
+  element: Element,
+  options: StackContextOptions = {},
+): Promise<string[]> => {
+  const { maxLines = DEFAULT_MAX_CONTEXT_LINES } = options;
+  const stack = await getStack(element);
+
+  if (stack && hasSourceFiles(stack)) {
+    const context: string[] = [];
+    for (const frame of stack) {
+      if (context.length >= maxLines) break;
+      const formatted = formatStackFrame(frame);
+      if (formatted) context.push(formatted);
+    }
+    return context;
+  }
+
+  // no sourcecode files detected, likely because user has selected static components (without hooks)
+  const componentNames = getComponentNamesFromFiber(element, maxLines);
+  return componentNames;
+};
+
 export const getElementContext = async (
   element: Element,
   options: StackContextOptions = {},
-): Promise<string> => {
+): Promise<[string, string[]]> => {
   const resolvedElement = findNearestFiberElement(element);
   const html = getHTMLPreview(resolvedElement);
   const stackContext = await getStackContext(resolvedElement, options);
 
-  if (stackContext) {
-    return `${html}${stackContext}`;
+  if (stackContext.length > 0) {
+    return [html, stackContext];
   }
 
-  return getFallbackContext(resolvedElement);
+  return [getFallbackContext(resolvedElement), []];
 };
 
 const getFallbackContext = (element: Element): string => {

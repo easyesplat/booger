@@ -375,9 +375,9 @@ export const createAgentManager = (
 
     const content = existingSession
       ? existingSession.context.content
-      : (await generateSnippet(elements, { maxLines: Infinity })).filter(
-          (snippet) => snippet.trim(),
-        );
+      : (await generateSnippet(elements, { maxLines: Infinity }))
+          .map((snippet) => snippet.join(""))
+          .filter((snippet) => snippet.trim());
 
     const context: AgentContext = {
       content,

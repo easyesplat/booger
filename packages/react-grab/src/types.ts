@@ -285,9 +285,12 @@ export interface PluginHooks {
   onDragEnd?: (elements: Element[], bounds: DragRect) => void;
   onBeforeCopy?: (elements: Element[]) => void | Promise<void>;
   transformCopyContent?: (
-    content: string,
+    content: string | [string, string[]][],
     elements: Element[],
-  ) => string | Promise<string>;
+  ) =>
+    | string
+    | [string, string[]][]
+    | Promise<string | [string, string[]][]>;
   onAfterCopy?: (elements: Element[], success: boolean) => void;
   onCopySuccess?: (elements: Element[], content: string) => void;
   onCopyError?: (error: Error) => void;
@@ -329,9 +332,9 @@ export interface PluginHooks {
     lineNumber?: number,
   ) => string;
   transformSnippet?: (
-    snippet: string,
+    snippet: [string, string[]],
     element: Element,
-  ) => string | Promise<string>;
+  ) => [string, string[]] | Promise<[string, string[]]>;
 }
 
 export interface ToolbarMenuAction {
@@ -417,7 +420,7 @@ export interface ReactGrabAPI {
   dispose: () => void;
   copyElement: (elements: Element | Element[]) => Promise<boolean>;
   getSource: (element: Element) => Promise<SourceInfo | null>;
-  getStackContext: (element: Element) => Promise<string>;
+  getStackContext: (element: Element) => Promise<string[]>;
   getState: () => ReactGrabState;
   setOptions: (options: SettableOptions) => void;
   registerPlugin: (plugin: Plugin) => void;

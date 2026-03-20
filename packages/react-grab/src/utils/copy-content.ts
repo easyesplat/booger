@@ -1,4 +1,5 @@
 import { VERSION } from "../constants.js";
+import { joinSnippets } from "./join-snippets.js";
 
 const LEXICAL_EDITOR_MIME_TYPE = "application/x-lexical-editor";
 const REACT_GRAB_MIME_TYPE = "application/x-react-grab";
@@ -15,6 +16,7 @@ interface CopyContentOptions {
   componentName?: string;
   tagName?: string;
   commentText?: string;
+  extraPrompt?: string;
   entries?: ReactGrabEntry[];
 }
 
@@ -89,6 +91,7 @@ interface ClipboardData {
   plainText: string;
   htmlContent: string;
   lexicalData: string;
+  selectionJSON: [string, string[]][];
 }
 
 interface SelectionData {
@@ -96,29 +99,36 @@ interface SelectionData {
   htmlContent: string;
   lexicalData: string;
   reactGrabMetadata: string;
+  selectionJSON: [string, string[]][];
 }
 
 // HACK: Cursor's Lexical editor only reads content from registered commands/files,
 // not from embedded clipboard data. We include the content after the mention chip
 // so Cursor can actually read it.
 const createClipboardData = (
-  content: string,
+  content: string | [string, string[]][],
   elementName: string,
+  extraPrompt?: string,
 ): ClipboardData => {
   const mentionKey = String(Math.floor(Math.random() * 10000));
   const namespaceUuid = generateUuid();
   const displayName = `<${elementName}>`;
 
+  const formattedContent = Array.isArray(content)
+    ? joinSnippets(content)
+    : content;
+  const selectionJSON = Array.isArray(content) ? content : [];
+
   const typeaheadType = {
     case: "file",
     path: `${displayName}.tsx`,
-    content,
+    content: formattedContent,
   };
 
   const selectedOption = {
     key: displayName,
     type: typeaheadType,
-    payload: { file: { path: `${displayName}.tsx`, content } },
+    payload: { file: { path: `${displayName}.tsx`, content: formattedContent } },
     id: generateUuid(),
     name: displayName,
     _score: 20,
@@ -131,9 +141,13 @@ const createClipboardData = (
     selectedOption,
   };
 
+  const contentWithPrompt = extraPrompt
+    ? `${extraPrompt}\n\n${formattedContent}`
+    : formattedContent;
+
   return {
-    plainText: `@${displayName}\n\n${content}\n`,
-    htmlContent: `<meta charset='utf-8'><pre><code>${escapeHtml(content)}</code></pre>`,
+    plainText: `@${displayName}\n\n${contentWithPrompt}\n`,
+    htmlContent: `<meta charset='utf-8'><pre><code>${escapeHtml(formattedContent)}</code></pre>`,
     lexicalData: JSON.stringify({
       namespace: `chat-input${namespaceUuid}-pane`,
       nodes: [
@@ -143,40 +157,44 @@ const createClipboardData = (
           typeaheadType,
           mentionMetadata,
         ),
-        createTextNode(`\n\n${content}`),
+        createTextNode(`\n\n${contentWithPrompt}`),
       ],
     }),
+    selectionJSON,
   };
 };
 
 export const copyContent = (
-  content: string,
+  content: string | [string, string[]][],
   options?: CopyContentOptions,
 ): boolean => {
   const elementName = options?.componentName ?? "div";
-  const { plainText, htmlContent, lexicalData } = createClipboardData(
-    content,
-    elementName,
-  );
+  const { plainText, htmlContent, lexicalData, selectionJSON } =
+    createClipboardData(content, elementName, options?.extraPrompt);
+
+  const formattedContent = Array.isArray(content)
+    ? joinSnippets(content)
+    : content;
+
   const entries = options?.entries ?? [
     {
       tagName: options?.tagName,
       componentName: elementName,
-      content,
+      content: formattedContent,
       commentText: options?.commentText,
     },
   ];
   const reactGrabMetadata: ReactGrabMetadata = {
     version: VERSION,
-    content,
+    content: formattedContent,
     entries,
     timestamp: Date.now(),
   };
 
   // Send message to parent site when loaded in iframe
-  const notifyPlatform = (packet : SelectionData) => {
-    window.parent.postMessage(packet, '*'); 
-  }
+  const notifyPlatform = (packet: SelectionData) => {
+    window.parent.postMessage(packet, "*");
+  };
 
   const copyHandler = (event: ClipboardEvent) => {
     event.preventDefault();
@@ -192,7 +210,7 @@ export const copyContent = (
   document.addEventListener("copy", copyHandler);
 
   const textarea = document.createElement("textarea");
-  textarea.value = content;
+  textarea.value = formattedContent;
   textarea.style.position = "fixed";
   textarea.style.left = "-9999px";
   textarea.ariaHidden = "true";
@@ -205,12 +223,13 @@ export const copyContent = (
     }
     const didCopySucceed = document.execCommand("copy");
     if (didCopySucceed) {
-      const selectionData : SelectionData = {
+      const selectionData: SelectionData = {
         plainText: plainText,
         htmlContent: htmlContent,
         lexicalData: lexicalData,
-        reactGrabMetadata: JSON.stringify(reactGrabMetadata)
-      }
+        reactGrabMetadata: JSON.stringify(reactGrabMetadata),
+        selectionJSON: selectionJSON,
+      };
       notifyPlatform(selectionData); // send all captured clipboard/selection data to parent site
 
       options?.onSuccess?.();

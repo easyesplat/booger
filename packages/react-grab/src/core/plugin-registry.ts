@@ -318,8 +318,10 @@ const createPluginRegistry = (initialOptions: SettableOptions = {}) => {
       callHook("onDragEnd", elements, bounds),
     onBeforeCopy: async (elements: Element[]) =>
       callHookAsync("onBeforeCopy", elements),
-    transformCopyContent: async (content: string, elements: Element[]) =>
-      callHookReduce("transformCopyContent", content, elements),
+    transformCopyContent: async (
+      content: string | [string, string[]][],
+      elements: Element[],
+    ) => callHookReduce("transformCopyContent", content, elements),
     onAfterCopy: (elements: Element[], success: boolean) =>
       callHook("onAfterCopy", elements, success),
     onCopySuccess: (elements: Element[], content: string) =>
@@ -360,7 +362,7 @@ const createPluginRegistry = (initialOptions: SettableOptions = {}) => {
       filePath: string,
       lineNumber?: number,
     ) => callHookReduceSync("transformOpenFileUrl", url, filePath, lineNumber),
-    transformSnippet: async (snippet: string, element: Element) =>
+    transformSnippet: async (snippet: [string, string[]], element: Element) =>
       callHookReduce("transformSnippet", snippet, element),
   };
 

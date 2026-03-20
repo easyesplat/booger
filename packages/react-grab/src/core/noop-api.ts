@@ -33,7 +33,7 @@ export const createNoopApi = (): ReactGrabAPI => {
     dispose: () => {},
     copyElement: () => Promise.resolve(false),
     getSource: () => Promise.resolve(null),
-    getStackContext: () => Promise.resolve(""),
+    getStackContext: () => Promise.resolve([]),
     getState,
     setOptions: () => {},
     registerPlugin: () => {},
