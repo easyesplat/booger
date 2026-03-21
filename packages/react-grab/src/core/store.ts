@@ -3,13 +3,10 @@ import type {
   Theme,
   GrabbedBox,
   SelectionLabelInstance,
-  AgentSession,
-  AgentOptions,
 } from "../types.js";
 import { OFFSCREEN_POSITION } from "../constants.js";
 import { createElementBounds } from "../utils/create-element-bounds.js";
 import { isElementConnected } from "../utils/is-element-connected.js";
-import { recalculateSessionPosition } from "../utils/recalculate-session-position.js";
 
 interface Position {
   x: number;
@@ -37,7 +34,6 @@ type GrabState =
   | {
       state: "active";
       phase: GrabPhase;
-      isPromptMode: boolean;
       isPendingDismiss: boolean;
     }
   | { state: "copying"; startedAt: number; wasActive: boolean }
@@ -47,8 +43,6 @@ interface GrabStore {
   current: GrabState;
 
   wasActivatedByToggle: boolean;
-  pendingCommentMode: boolean;
-  hasAgentProvider: boolean;
   keyHoldDuration: number;
 
   pointer: Position;
@@ -74,9 +68,6 @@ interface GrabStore {
   grabbedBoxes: GrabbedBox[];
   labelInstances: SelectionLabelInstance[];
 
-  agentSessions: Map<string, AgentSession>;
-  sessionElements: Map<string, Element>;
-
   isTouchMode: boolean;
 
   theme: Required<Theme>;
@@ -84,22 +75,13 @@ interface GrabStore {
   activationTimestamp: number | null;
   previouslyFocusedElement: Element | null;
 
-  isAgentConnected: boolean;
-  supportsUndo: boolean;
-  supportsFollowUp: boolean;
-  dismissButtonText: string | undefined;
-  pendingAbortSessionId: string | null;
-
   contextMenuPosition: Position | null;
   contextMenuElement: Element | null;
   contextMenuClickOffset: Position | null;
-
-  selectedAgent: AgentOptions | null;
 }
 
 interface GrabStoreInput {
   theme: Required<Theme>;
-  hasAgentProvider: boolean;
   keyHoldDuration: number;
 }
 
@@ -107,8 +89,6 @@ const createInitialStore = (input: GrabStoreInput): GrabStore => ({
   current: { state: "idle" },
 
   wasActivatedByToggle: false,
-  pendingCommentMode: false,
-  hasAgentProvider: input.hasAgentProvider,
   keyHoldDuration: input.keyHoldDuration,
 
   pointer: { x: OFFSCREEN_POSITION, y: OFFSCREEN_POSITION },
@@ -134,9 +114,6 @@ const createInitialStore = (input: GrabStoreInput): GrabStore => ({
   grabbedBoxes: [],
   labelInstances: [],
 
-  agentSessions: new Map(),
-  sessionElements: new Map(),
-
   isTouchMode: false,
 
   theme: input.theme,
@@ -144,17 +121,9 @@ const createInitialStore = (input: GrabStoreInput): GrabStore => ({
   activationTimestamp: null,
   previouslyFocusedElement: null,
 
-  isAgentConnected: false,
-  supportsUndo: false,
-  supportsFollowUp: false,
-  dismissButtonText: undefined,
-  pendingAbortSessionId: null,
-
   contextMenuPosition: null,
   contextMenuElement: null,
   contextMenuClickOffset: null,
-
-  selectedAgent: null,
 });
 
 interface GrabActions {
@@ -172,8 +141,6 @@ interface GrabActions {
   startCopy: () => void;
   completeCopy: (element?: Element) => void;
   finishJustCopied: () => void;
-  enterPromptMode: (position: Position, element: Element) => void;
-  exitPromptMode: () => void;
   setInputText: (value: string) => void;
   clearInputText: () => void;
   setPendingDismiss: (value: boolean) => void;
@@ -187,7 +154,6 @@ interface GrabActions {
   setLastGrabbed: (element: Element | null) => void;
   clearLastCopied: () => void;
   setWasActivatedByToggle: (value: boolean) => void;
-  setPendingCommentMode: (value: boolean) => void;
   setTouchMode: (value: boolean) => void;
   setSelectionSource: (
     filePath: string | null,
@@ -207,28 +173,9 @@ interface GrabActions {
   ) => void;
   removeLabelInstance: (instanceId: string) => void;
   clearLabelInstances: () => void;
-  setHasAgentProvider: (value: boolean) => void;
-  setAgentCapabilities: (capabilities: {
-    supportsUndo: boolean;
-    supportsFollowUp: boolean;
-    dismissButtonText: string | undefined;
-    isAgentConnected: boolean;
-  }) => void;
-  setPendingAbortSessionId: (sessionId: string | null) => void;
-  updateSessionBounds: () => void;
-  addAgentSession: (
-    sessionId: string,
-    session: AgentSession,
-    element: Element,
-  ) => void;
-  updateAgentSessionStatus: (sessionId: string, status: string) => void;
-  completeAgentSession: (sessionId: string, status?: string) => void;
-  setAgentSessionError: (sessionId: string, error: string) => void;
-  removeAgentSession: (sessionId: string) => void;
   showContextMenu: (position: Position, element: Element) => void;
   hideContextMenu: () => void;
   updateContextMenuPosition: () => void;
-  setSelectedAgent: (agent: AgentOptions | null) => void;
 }
 
 const createGrabStore = (input: GrabStoreInput) => {
@@ -255,7 +202,6 @@ const createGrabStore = (input: GrabStoreInput) => {
       setStore("current", {
         state: "active",
         phase: "hovering",
-        isPromptMode: false,
         isPendingDismiss: false,
       });
       setStore("activationTimestamp", Date.now());
@@ -267,20 +213,17 @@ const createGrabStore = (input: GrabStoreInput) => {
         produce((draft) => {
           draft.current = { state: "idle" };
           draft.wasActivatedByToggle = false;
-          draft.pendingCommentMode = false;
           draft.inputText = "";
           draft.frozenElement = null;
           draft.frozenElements = [];
           draft.frozenDragRect = null;
           draft.pendingClickData = null;
           draft.replySessionId = null;
-          draft.pendingAbortSessionId = null;
           draft.activationTimestamp = null;
           draft.previouslyFocusedElement = null;
           draft.contextMenuPosition = null;
           draft.contextMenuElement = null;
           draft.contextMenuClickOffset = null;
-          draft.selectedAgent = null;
           draft.lastCopiedElement = null;
         }),
       );
@@ -428,58 +371,11 @@ const createGrabStore = (input: GrabStoreInput) => {
           setStore("current", {
             state: "active",
             phase: "hovering",
-            isPromptMode: false,
             isPendingDismiss: false,
           });
         } else {
           actions.deactivate();
         }
-      }
-    },
-
-    enterPromptMode: (position: Position, element: Element) => {
-      const bounds = createElementBounds(element);
-      const selectionCenterX = bounds.x + bounds.width / 2;
-
-      setStore("copyStart", position);
-      setStore("copyOffsetFromCenterX", position.x - selectionCenterX);
-      setStore("pointer", position);
-      setStore("frozenElement", element);
-      setStore("wasActivatedByToggle", true);
-
-      if (store.current.state !== "active") {
-        setStore("current", {
-          state: "active",
-          phase: "frozen",
-          isPromptMode: true,
-          isPendingDismiss: false,
-        });
-        setStore("activationTimestamp", Date.now());
-        setStore("previouslyFocusedElement", document.activeElement);
-      } else {
-        setStore(
-          "current",
-          produce((current) => {
-            if (current.state === "active") {
-              current.isPromptMode = true;
-              current.phase = "frozen";
-            }
-          }),
-        );
-      }
-    },
-
-    exitPromptMode: () => {
-      if (store.current.state === "active") {
-        setStore(
-          "current",
-          produce((current) => {
-            if (current.state === "active") {
-              current.isPromptMode = false;
-              current.isPendingDismiss = false;
-            }
-          }),
-        );
       }
     },
 
@@ -551,10 +447,6 @@ const createGrabStore = (input: GrabStoreInput) => {
 
     setWasActivatedByToggle: (value: boolean) => {
       setStore("wasActivatedByToggle", value);
-    },
-
-    setPendingCommentMode: (value: boolean) => {
-      setStore("pendingCommentMode", value);
     },
 
     setTouchMode: (value: boolean) => {
@@ -631,108 +523,6 @@ const createGrabStore = (input: GrabStoreInput) => {
       setStore("labelInstances", []);
     },
 
-    setHasAgentProvider: (value: boolean) => {
-      setStore("hasAgentProvider", value);
-    },
-
-    setAgentCapabilities: (capabilities) => {
-      setStore("supportsUndo", capabilities.supportsUndo);
-      setStore("supportsFollowUp", capabilities.supportsFollowUp);
-      setStore("dismissButtonText", capabilities.dismissButtonText);
-      setStore("isAgentConnected", capabilities.isAgentConnected);
-    },
-
-    setPendingAbortSessionId: (sessionId: string | null) => {
-      setStore("pendingAbortSessionId", sessionId);
-    },
-
-    updateSessionBounds: () => {
-      const currentSessions = store.agentSessions;
-      if (currentSessions.size === 0) return;
-
-      const updatedSessions = new Map(currentSessions);
-      let didUpdate = false;
-
-      for (const [sessionId, session] of currentSessions) {
-        const element = store.sessionElements.get(sessionId) ?? null;
-        if (isElementConnected(element)) {
-          const newBounds = createElementBounds(element);
-          const oldFirstBounds = session.selectionBounds[0];
-          const updatedPosition = recalculateSessionPosition({
-            currentPosition: session.position,
-            previousBounds: oldFirstBounds,
-            nextBounds: newBounds,
-          });
-
-          updatedSessions.set(sessionId, {
-            ...session,
-            selectionBounds: [newBounds],
-            position: updatedPosition,
-          });
-          didUpdate = true;
-        }
-      }
-
-      if (didUpdate) {
-        setStore("agentSessions", updatedSessions);
-      }
-    },
-
-    addAgentSession: (
-      sessionId: string,
-      session: AgentSession,
-      element: Element,
-    ) => {
-      const newSessions = new Map(store.agentSessions);
-      newSessions.set(sessionId, session);
-      setStore("agentSessions", newSessions);
-
-      const newSessionElements = new Map(store.sessionElements);
-      newSessionElements.set(sessionId, element);
-      setStore("sessionElements", newSessionElements);
-    },
-
-    updateAgentSessionStatus: (sessionId: string, status: string) => {
-      const session = store.agentSessions.get(sessionId);
-      if (!session) return;
-
-      const newSessions = new Map(store.agentSessions);
-      newSessions.set(sessionId, { ...session, lastStatus: status });
-      setStore("agentSessions", newSessions);
-    },
-
-    completeAgentSession: (sessionId: string, status?: string) => {
-      const session = store.agentSessions.get(sessionId);
-      if (!session) return;
-
-      const newSessions = new Map(store.agentSessions);
-      newSessions.set(sessionId, {
-        ...session,
-        isStreaming: false,
-        lastStatus: status ?? session.lastStatus,
-      });
-      setStore("agentSessions", newSessions);
-    },
-
-    setAgentSessionError: (sessionId: string, error: string) => {
-      const session = store.agentSessions.get(sessionId);
-      if (!session) return;
-
-      const newSessions = new Map(store.agentSessions);
-      newSessions.set(sessionId, { ...session, isStreaming: false, error });
-      setStore("agentSessions", newSessions);
-    },
-
-    removeAgentSession: (sessionId: string) => {
-      const newSessions = new Map(store.agentSessions);
-      newSessions.delete(sessionId);
-      setStore("agentSessions", newSessions);
-
-      const newSessionElements = new Map(store.sessionElements);
-      newSessionElements.delete(sessionId);
-      setStore("sessionElements", newSessionElements);
-    },
-
     showContextMenu: (position: Position, element: Element) => {
       const bounds = createElementBounds(element);
       const centerX = bounds.x + bounds.width / 2;
@@ -766,10 +556,6 @@ const createGrabStore = (input: GrabStoreInput) => {
         x: newCenterX + clickOffset.x,
         y: newCenterY + clickOffset.y,
       });
-    },
-
-    setSelectedAgent: (agent: AgentOptions | null) => {
-      setStore("selectedAgent", agent);
     },
   };
 

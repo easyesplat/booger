@@ -10,6 +10,6 @@
     "lib": ["esnext", "dom", "dom.iterable"],
     "skipLibCheck": true
   },
-  "include": ["src", "tsup.config.ts", "e2e", "playwright.config.ts"],
+  "include": ["src", "tsup.config.ts", "e2e"],
   "exclude": ["**/node_modules/**", "dist"]
 }

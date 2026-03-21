@@ -5,7 +5,6 @@ export {
   isInstrumentationActive,
   DEFAULT_THEME,
 } from "./core/index.js";
-export { commentPlugin } from "./core/plugins/comment.js";
 export { openPlugin } from "./core/plugins/open.js";
 export { generateSnippet } from "./utils/generate-snippet.js";
 export type {
@@ -21,15 +20,8 @@ export type {
   Rect,
   DeepPartial,
   ElementLabelVariant,
-  PromptModeContext,
   CrosshairContext,
   ElementLabelContext,
-  AgentContext,
-  AgentSession,
-  AgentProvider,
-  AgentSessionStorage,
-  AgentOptions,
-  AgentCompleteResult,
   SettableOptions,
   ActivationMode,
   ContextMenuAction,

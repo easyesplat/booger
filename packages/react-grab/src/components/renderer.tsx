@@ -29,7 +29,6 @@ export const ReactGrabRenderer: Component<ReactGrabRendererProps> = (props) => {
         dragVisible={props.dragVisible}
         dragBounds={props.dragBounds}
         grabbedBoxes={props.grabbedBoxes}
-        agentSessions={props.agentSessions}
         labelInstances={props.labelInstances}
       />
 
@@ -51,72 +50,6 @@ export const ReactGrabRenderer: Component<ReactGrabRendererProps> = (props) => {
         }}
       />
 
-      <Index
-        each={
-          props.agentSessions ? Array.from(props.agentSessions.values()) : []
-        }
-      >
-        {(session) => (
-          <>
-            <Show when={session().selectionBounds.length > 0}>
-              <SelectionLabel
-                tagName={session().tagName}
-                componentName={session().componentName}
-                selectionBounds={session().selectionBounds[0]}
-                mouseX={session().position.x}
-                visible={true}
-                hasAgent={true}
-                isAgentConnected={true}
-                status={(() => {
-                  if (session().isFading) return "fading";
-                  if (session().isStreaming) return "copying";
-                  return "copied";
-                })()}
-                statusText={session().lastStatus || "Thinking…"}
-                inputValue={session().context.prompt}
-                previousPrompt={session().context.prompt}
-                supportsUndo={props.supportsUndo}
-                supportsFollowUp={props.supportsFollowUp}
-                dismissButtonText={props.dismissButtonText}
-                onAbort={() => props.onRequestAbortSession?.(session().id)}
-                onDismiss={
-                  session().isStreaming
-                    ? undefined
-                    : () => props.onDismissSession?.(session().id)
-                }
-                onUndo={
-                  session().isStreaming
-                    ? undefined
-                    : () => props.onUndoSession?.(session().id)
-                }
-                onFollowUpSubmit={
-                  session().isStreaming
-                    ? undefined
-                    : (prompt) =>
-                        props.onFollowUpSubmitSession?.(session().id, prompt)
-                }
-                error={session().error}
-                onAcknowledgeError={() =>
-                  props.onAcknowledgeSessionError?.(session().id)
-                }
-                onRetry={() => props.onRetrySession?.(session().id)}
-                isPendingAbort={
-                  session().isStreaming &&
-                  props.pendingAbortSessionId === session().id
-                }
-                onConfirmAbort={() =>
-                  props.onAbortSession?.(session().id, true)
-                }
-                onCancelAbort={() =>
-                  props.onAbortSession?.(session().id, false)
-                }
-                onShowContextMenu={undefined}
-              />
-            </Show>
-          </>
-        )}
-      </Index>
-
       <Show when={props.selectionLabelVisible && props.selectionBounds}>
         <SelectionLabel
           tagName={props.selectionTagName}
@@ -125,11 +58,8 @@ export const ReactGrabRenderer: Component<ReactGrabRendererProps> = (props) => {
           selectionBounds={props.selectionBounds}
           mouseX={props.mouseX}
           visible={props.selectionLabelVisible}
-          isPromptMode={props.isPromptMode}
           inputValue={props.inputValue}
           replyToPrompt={props.replyToPrompt}
-          hasAgent={props.hasAgent}
-          isAgentConnected={props.isAgentConnected}
           status={props.selectionLabelStatus}
           actionCycleState={props.selectionActionCycleState}
           arrowNavigationState={props.selectionArrowNavigationState}
@@ -163,8 +93,6 @@ export const ReactGrabRenderer: Component<ReactGrabRendererProps> = (props) => {
             visible={true}
             status={instance().status}
             statusText={instance().statusText}
-            hasAgent={Boolean(instance().statusText)}
-            isPromptMode={instance().isPromptMode}
             inputValue={instance().inputValue}
             error={instance().errorMessage}
             hideArrow={instance().hideArrow}
@@ -179,8 +107,7 @@ export const ReactGrabRenderer: Component<ReactGrabRendererProps> = (props) => {
               ) {
                 return undefined;
               }
-              return () =>
-                props.onShowContextMenuInstance?.(currentInstance.id);
+              return undefined; // Was onShowContextMenuInstance
             })()}
             onHoverChange={(isHovered) =>
               props.onLabelInstanceHoverChange?.(instance().id, isHovered)

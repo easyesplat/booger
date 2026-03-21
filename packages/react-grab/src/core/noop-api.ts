@@ -1,23 +1,20 @@
 import type { ReactGrabAPI, ReactGrabState } from "../types.js";
 
 export const createNoopApi = (): ReactGrabAPI => {
-  const getState = (): ReactGrabState => {
-    return {
-      isActive: false,
-      isDragging: false,
-      isCopying: false,
-      isPromptMode: false,
-      isCrosshairVisible: false,
-      isSelectionBoxVisible: false,
-      isDragBoxVisible: false,
-      targetElement: null,
-      dragBounds: null,
-      grabbedBoxes: [],
-      labelInstances: [],
-      selectionFilePath: null,
-      toolbarState: null,
-    };
-  };
+  const getState = (): ReactGrabState => ({
+    isActive: false,
+    isDragging: false,
+    isCopying: false,
+    isCrosshairVisible: false,
+    isSelectionBoxVisible: false,
+    isDragBoxVisible: false,
+    targetElement: null,
+    dragBounds: null,
+    grabbedBoxes: [],
+    labelInstances: [],
+    selectionFilePath: null,
+    toolbarState: null,
+  });
 
   return {
     activate: () => {},

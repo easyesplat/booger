@@ -3,7 +3,6 @@ import type { Component } from "solid-js";
 import type {
   OverlayBounds,
   SelectionLabelInstance,
-  AgentSession,
 } from "../types.js";
 import { lerp } from "../utils/lerp.js";
 import {
@@ -41,14 +40,9 @@ const LAYER_STYLES = {
     fillColor: OVERLAY_FILL_COLOR_DEFAULT,
     lerpFactor: SELECTION_LERP_FACTOR,
   },
-  processing: {
-    borderColor: OVERLAY_BORDER_COLOR_DEFAULT,
-    fillColor: OVERLAY_FILL_COLOR_DEFAULT,
-    lerpFactor: SELECTION_LERP_FACTOR,
-  },
 } as const;
 
-type LayerName = "crosshair" | "drag" | "selection" | "grabbed" | "processing";
+type LayerName = "crosshair" | "drag" | "selection" | "grabbed";
 
 interface OffscreenLayer {
   canvas: OffscreenCanvas | null;
@@ -89,8 +83,6 @@ export interface OverlayCanvasProps {
     createdAt: number;
   }>;
 
-  agentSessions?: Map<string, AgentSession>;
-
   labelInstances?: SelectionLabelInstance[];
 }
 
@@ -107,7 +99,6 @@ export const OverlayCanvas: Component<OverlayCanvasProps> = (props) => {
     drag: { canvas: null, context: null },
     selection: { canvas: null, context: null },
     grabbed: { canvas: null, context: null },
-    processing: { canvas: null, context: null },
   };
 
   const crosshairCurrentPosition: Position = { x: 0, y: 0 };
@@ -115,7 +106,6 @@ export const OverlayCanvas: Component<OverlayCanvasProps> = (props) => {
   let selectionAnimations: AnimatedBounds[] = [];
   let dragAnimation: AnimatedBounds | null = null;
   let grabbedAnimations: AnimatedBounds[] = [];
-  let processingAnimations: AnimatedBounds[] = [];
 
   const createOffscreenLayer = (
     layerWidth: number,
@@ -344,30 +334,6 @@ export const OverlayCanvas: Component<OverlayCanvasProps> = (props) => {
     }
   };
 
-  const renderProcessingLayer = () => {
-    const layer = layers.processing;
-    if (!layer.context) return;
-
-    const context = layer.context;
-    context.clearRect(0, 0, canvasWidth, canvasHeight);
-
-    const style = LAYER_STYLES.processing;
-
-    for (const animation of processingAnimations) {
-      drawRoundedRectangle(
-        context,
-        animation.current.x,
-        animation.current.y,
-        animation.current.width,
-        animation.current.height,
-        animation.borderRadius,
-        style.fillColor,
-        style.borderColor,
-        animation.opacity,
-      );
-    }
-  };
-
   const compositeAllLayers = () => {
     if (!mainContext || !canvasRef) return;
 
@@ -379,14 +345,12 @@ export const OverlayCanvas: Component<OverlayCanvasProps> = (props) => {
     renderDragLayer();
     renderSelectionLayer();
     renderGrabbedLayer();
-    renderProcessingLayer();
 
     const layerRenderOrder: LayerName[] = [
       "crosshair",
       "drag",
       "selection",
       "grabbed",
-      "processing",
     ];
     for (const layerName of layerRenderOrder) {
       const layer = layers[layerName];
@@ -510,14 +474,6 @@ export const OverlayCanvas: Component<OverlayCanvasProps> = (props) => {
 
       return animation.opacity > 0;
     });
-
-    for (const animation of processingAnimations) {
-      if (animation.isInitialized) {
-        if (interpolateBounds(animation, LAYER_STYLES.processing.lerpFactor)) {
-          shouldContinueAnimating = true;
-        }
-      }
-    }
 
     compositeAllLayers();
 
@@ -653,41 +609,6 @@ export const OverlayCanvas: Component<OverlayCanvasProps> = (props) => {
           return activeBoxIds.has(animation.id);
         });
 
-        scheduleAnimationFrame();
-      },
-    ),
-  );
-
-  createEffect(
-    on(
-      () => props.agentSessions,
-      (agentSessions) => {
-        if (!agentSessions || agentSessions.size === 0) {
-          processingAnimations = [];
-          scheduleAnimationFrame();
-          return;
-        }
-
-        const updatedAnimations: AnimatedBounds[] = [];
-
-        for (const [sessionId, session] of agentSessions) {
-          for (let index = 0; index < session.selectionBounds.length; index++) {
-            const bounds = session.selectionBounds[index];
-            const animationId = `processing-${sessionId}-${index}`;
-            const existingAnimation = processingAnimations.find(
-              (animation) => animation.id === animationId,
-            );
-
-            if (existingAnimation) {
-              updateAnimationTarget(existingAnimation, bounds);
-              updatedAnimations.push(existingAnimation);
-            } else {
-              updatedAnimations.push(createAnimatedBounds(animationId, bounds));
-            }
-          }
-        }
-
-        processingAnimations = updatedAnimations;
         scheduleAnimationFrame();
       },
     ),

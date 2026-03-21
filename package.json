@@ -5,15 +5,13 @@
   ],
   "type": "module",
   "scripts": {
-    "build": "cp README.md packages/react-grab/README.md && turbo run build --filter=react-grab --filter=@react-grab/cursor --filter=@react-grab/claude-code --filter=@react-grab/opencode --filter=@react-grab/codex --filter=@react-grab/gemini --filter=@react-grab/amp --filter=@react-grab/droid --filter=@react-grab/copilot --filter=@react-grab/cli --filter=@react-grab/utils && pnpm --filter grab build",
-    "dev": "turbo dev --filter=react-grab --filter=@react-grab/cursor --filter=@react-grab/claude-code --filter=@react-grab/opencode --filter=@react-grab/codex --filter=@react-grab/gemini --filter=@react-grab/amp --filter=@react-grab/droid --filter=@react-grab/copilot --filter=@react-grab/cli --filter=@react-grab/utils",
-    "test": "turbo run test --filter=react-grab --filter=@react-grab/cli",
+    "build": "cp README.md packages/react-grab/README.md && turbo run build --filter=react-grab",
+    "dev": "turbo dev --filter=react-grab",
+    "test": "turbo run test --filter=react-grab",
     "typecheck": "pnpm --filter react-grab typecheck",
     "lint": "pnpm --filter react-grab lint",
     "lint:fix": "pnpm --filter react-grab lint:fix",
     "format": "oxfmt",
-    "extension:dev": "pnpm --filter web-extension dev",
-    "extension:build": "pnpm --filter web-extension build",
     "changeset": "changeset",
     "version": "changeset version",
     "release": "pnpm build && changeset publish"

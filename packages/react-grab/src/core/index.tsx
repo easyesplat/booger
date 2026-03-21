@@ -101,8 +101,6 @@ import type {
   ReactGrabAPI,
   ReactGrabState,
   SelectionLabelInstance,
-  AgentSession,
-  AgentOptions,
   ContextMenuActionContext,
   ContextMenuAction,
   ActionCycleItem,
@@ -118,7 +116,6 @@ import type {
 } from "../types.js";
 import { DEFAULT_THEME } from "./theme.js";
 import { createPluginRegistry } from "./plugin-registry.js";
-import { createAgentManager } from "./agent/index.js";
 import { createArrowNavigator } from "./arrow-navigation.js";
 import {
   getRequiredModifiers,
@@ -130,15 +127,12 @@ import { onIdle } from "../utils/on-idle.js";
 import { getScriptOptions } from "../utils/get-script-options.js";
 import { isEnterCode } from "../utils/is-enter-code.js";
 import { isMac } from "../utils/is-mac.js";
-import {
-  loadToolbarState,
-  saveToolbarState,
-} from "../components/toolbar/state.js";
+import { loadToolbarState, saveToolbarState } from "../components/toolbar/state.js";
 import { copyPlugin } from "./plugins/copy.js";
-import { commentPlugin } from "./plugins/comment.js";
 import { openPlugin } from "./plugins/open.js";
 import { copyHtmlPlugin } from "./plugins/copy-html.js";
 import { copyStylesPlugin } from "./plugins/copy-styles.js";
+
 import {
   freezeAnimations,
   freezeAllAnimations,
@@ -161,7 +155,6 @@ import { joinSnippets } from "../utils/join-snippets.js";
 
 const builtInPlugins = [
   copyPlugin,
-  commentPlugin,
   copyHtmlPlugin,
   copyStylesPlugin,
   openPlugin,
@@ -200,18 +193,8 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
   return createRoot((dispose) => {
     const pluginRegistry = createPluginRegistry(settableOptions);
 
-    const getAgentFromActions = () => {
-      for (const action of pluginRegistry.store.actions) {
-        if (action.agent?.provider) {
-          return action.agent;
-        }
-      }
-      return undefined;
-    };
-
     const { store, actions } = createGrabStore({
       theme: DEFAULT_THEME,
-      hasAgentProvider: Boolean(getAgentFromActions()?.provider),
       keyHoldDuration:
         pluginRegistry.store.options.keyHoldDuration ??
         DEFAULT_KEY_HOLD_DURATION_MS,
@@ -272,21 +255,6 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
     const isCopying = createMemo(() => store.current.state === "copying");
 
     const didJustCopy = createMemo(() => store.current.state === "justCopied");
-
-    const isPromptMode = createMemo(
-      () => store.current.state === "active" && store.current.isPromptMode,
-    );
-
-    const isCommentMode = createMemo(
-      () => store.pendingCommentMode || isPromptMode(),
-    );
-
-    const isPendingDismiss = createMemo(
-      () =>
-        store.current.state === "active" &&
-        store.current.isPromptMode &&
-        store.current.isPendingDismiss,
-    );
 
     const savedToolbarState = loadToolbarState();
     const [isEnabled, setIsEnabled] = createSignal(
@@ -387,10 +355,6 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
       },
     );
 
-    const pendingAbortSessionId = createMemo(() => store.pendingAbortSessionId);
-
-    const hasAgentProvider = createMemo(() => store.hasAgentProvider);
-
     const clearHoldTimer = () => {
       if (holdTimerId !== null) {
         clearTimeout(holdTimerId);
@@ -452,25 +416,6 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
         pluginRegistry.hooks.onActivate();
       }),
     );
-
-    const preparePromptMode = (
-      element: Element,
-      positionX: number,
-      positionY: number,
-    ) => {
-      setCopyStartPosition(element, positionX, positionY);
-      actions.clearInputText();
-    };
-
-    const activatePromptMode = () => {
-      const element = store.frozenElement || targetElement();
-      if (element) {
-        actions.enterPromptMode(
-          { x: store.pointer.x, y: store.pointer.y },
-          element,
-        );
-      }
-    };
 
     const setCopyStartPosition = (
       element: Element,
@@ -554,7 +499,6 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
         !isDragging() &&
         !store.isTouchMode &&
         !isToggleFrozen() &&
-        !isPromptMode() &&
         !isToolbarSelectHovered() &&
         store.contextMenuPosition === null,
     );
@@ -1051,7 +995,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
 
     createEffect(() => {
       const element = store.detectedElement;
-      if (!element) return;
+      
 
       const intervalId = setInterval(() => {
         if (!isElementConnected(element)) {
@@ -1251,7 +1195,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
     });
 
     const cursorPosition = createMemo(() => {
-      if (isCopying() || isPromptMode()) {
+      if (isCopying()) {
         void store.viewportVersion;
         const element = store.frozenElement || targetElement();
         if (element) {
@@ -1327,13 +1271,6 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
       ),
     );
 
-    createEffect(
-      on(
-        () => store.viewportVersion,
-        () => agentManager._internal.updateBoundsOnViewportChange(),
-      ),
-    );
-
     const stateChangeGrabbedBoxes = createMemo(() =>
       store.grabbedBoxes.map((box) => ({
         id: box.id,
@@ -1356,7 +1293,6 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
       const active = isActivated();
       const dragging = isDragging();
       const copying = isCopying();
-      const inputMode = isPromptMode();
       const crosshairState = crosshairVisible();
       const target = targetElement();
       const drag = dragBounds();
@@ -1389,7 +1325,6 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
         isActive: active,
         isDragging: dragging,
         isCopying: copying,
-        isPromptMode: inputMode,
         isCrosshairVisible: crosshairState ?? false,
         isSelectionBoxVisible,
         isDragBoxVisible,
@@ -1408,25 +1343,6 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
       on(derivedStateForHook, (state) => {
         pluginRegistry.hooks.onStateChange(state);
       }),
-    );
-
-    createEffect(
-      on(
-        () =>
-          [
-            isPromptMode(),
-            store.pointer.x,
-            store.pointer.y,
-            targetElement(),
-          ] as const,
-        ([inputMode, x, y, target]) => {
-          pluginRegistry.hooks.onPromptModeChange(inputMode, {
-            x,
-            y,
-            targetElement: target,
-          });
-        },
-      ),
     );
 
     createEffect(
@@ -1503,11 +1419,11 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
 
     createEffect(
       on(
-        () => [isActivated(), isCopying(), isPromptMode()] as const,
-        ([activated, copying, inputMode]) => {
+        () => [isActivated(), isCopying()] as const,
+        ([activated, copying]) => {
           if (copying) {
             setCursorOverride("progress");
-          } else if (activated && !inputMode) {
+          } else if (activated) {
             setCursorOverride("crosshair");
           } else {
             setCursorOverride(null);
@@ -1571,60 +1487,11 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
       activateRenderer();
     };
 
-    const restoreInputFromSession = (
-      session: AgentSession,
-      elements: Element[],
-      agent?: AgentOptions,
-    ) => {
-      const element = elements[0];
-      if (isElementConnected(element)) {
-        const rect = element.getBoundingClientRect();
-        const centerY = rect.top + rect.height / 2;
-
-        actions.setPointer({ x: session.position.x, y: centerY });
-        actions.setFrozenElements(elements);
-        actions.setInputText(session.context.prompt);
-        actions.setWasActivatedByToggle(true);
-
-        if (agent) {
-          actions.setSelectedAgent(agent);
-        }
-
-        if (!isActivated()) {
-          activateRenderer();
-        }
-      }
-    };
-
-    const wrapAgentWithCallbacks = (agent: AgentOptions): AgentOptions => {
-      return {
-        ...agent,
-        onAbort: (session: AgentSession, elements: Element[]) => {
-          agent.onAbort?.(session, elements);
-          restoreInputFromSession(session, elements, agent);
-        },
-        onUndo: (session: AgentSession, elements: Element[]) => {
-          agent.onUndo?.(session, elements);
-          restoreInputFromSession(session, elements, agent);
-        },
-      };
-    };
-
-    const getAgentOptionsWithCallbacks = () => {
-      const agent = getAgentFromActions();
-      if (!agent) return undefined;
-      return wrapAgentWithCallbacks(agent);
-    };
-
-    const agentManager = createAgentManager(getAgentOptionsWithCallbacks(), {
-      transformAgentContext: pluginRegistry.hooks.transformAgentContext,
-    });
-
     const handleInputSubmit = () => {
       actions.clearLastCopied();
       const frozenElements = [...store.frozenElements];
       const element = store.frozenElement || targetElement();
-      const prompt = isPromptMode() ? store.inputText.trim() : "";
+      const prompt = store.inputText.trim();
 
       if (!element) {
         deactivateRenderer();
@@ -1642,31 +1509,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
       const currentY = firstBounds.y + firstBounds.height / 2;
       const labelPositionX = currentX + store.copyOffsetFromCenterX;
 
-      if ((store.selectedAgent || hasAgentProvider()) && prompt) {
-        const currentReplySessionId = store.replySessionId;
-        const selectedAgent = store.selectedAgent;
-
-        deactivateRenderer();
-
-        actions.clearReplySessionId();
-        actions.setSelectedAgent(null);
-
-        void agentManager.session.start({
-          elements,
-          prompt,
-          position: { x: labelPositionX, y: currentY },
-          selectionBounds: currentSelectionBounds,
-          sessionId: currentReplySessionId ?? undefined,
-          agent: selectedAgent
-            ? wrapAgentWithCallbacks(selectedAgent)
-            : undefined,
-        });
-
-        return;
-      }
-
       actions.setPointer({ x: currentX, y: currentY });
-      actions.exitPromptMode();
       actions.clearInputText();
       actions.clearReplySessionId();
 
@@ -1681,73 +1524,13 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
 
     const handleInputCancel = () => {
       actions.clearLastCopied();
-      if (!isPromptMode()) return;
-
-      const currentInput = store.inputText.trim();
-      if (currentInput && !isPendingDismiss()) {
-        actions.setPendingDismiss(true);
-        return;
-      }
-
       actions.clearInputText();
       actions.clearReplySessionId();
       deactivateRenderer();
-    };
-
-    const handleConfirmDismiss = () => {
-      actions.clearInputText();
-      actions.clearReplySessionId();
-      deactivateRenderer();
-    };
-
-    const handleCancelDismiss = () => {
-      actions.setPendingDismiss(false);
-    };
-
-    const handleAgentAbort = (sessionId: string, confirmed: boolean) => {
-      actions.setPendingAbortSessionId(null);
-      if (confirmed) {
-        agentManager.session.abort(sessionId);
-      }
     };
 
     const handleToggleExpand = () => {
-      const element = store.frozenElement || targetElement();
-      if (element) {
-        preparePromptMode(element, store.pointer.x, store.pointer.y);
-      }
-      activatePromptMode();
-    };
-
-    const handleFollowUpSubmit = (sessionId: string, prompt: string) => {
-      const session = agentManager.sessions().get(sessionId);
-      const elements = agentManager.session.getElements(sessionId);
-      const sessionBounds = session?.selectionBounds ?? [];
-      const firstBounds = sessionBounds[0];
-      if (session && elements.length > 0 && firstBounds) {
-        const positionX = session.position.x;
-        const followUpSessionId = session.context.sessionId ?? sessionId;
-
-        agentManager.session.dismiss(sessionId);
-
-        void agentManager.session.start({
-          elements,
-          prompt,
-          position: {
-            x: positionX,
-            y: firstBounds.y + firstBounds.height / 2,
-          },
-          selectionBounds: sessionBounds,
-          sessionId: followUpSessionId,
-        });
-      }
-    };
-
-    const handleAcknowledgeError = (sessionId: string) => {
-      const prompt = agentManager.session.acknowledgeError(sessionId);
-      if (prompt) {
-        actions.setInputText(prompt);
-      }
+      // Prompt mode removed
     };
 
     const handleToggleActive = () => {
@@ -1757,16 +1540,6 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
         isPendingContextMenuSelect = true;
         toggleActivate();
       }
-    };
-
-    const enterCommentModeForElement = (
-      element: Element,
-      positionX: number,
-      positionY: number,
-    ) => {
-      actions.setPendingCommentMode(false);
-      actions.clearInputText();
-      actions.enterPromptMode({ x: positionX, y: positionY }, element);
     };
 
     const openContextMenu = (
@@ -1779,20 +1552,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
       pluginRegistry.hooks.onContextMenu(element, position);
     };
 
-    const handleComment = () => {
-      if (!isEnabled()) return;
 
-      const isAlreadyInCommentMode = isActivated() && isCommentMode();
-      if (isAlreadyInCommentMode) {
-        deactivateRenderer();
-        return;
-      }
-
-      actions.setPendingCommentMode(true);
-      if (!isActivated()) {
-        toggleActivate();
-      }
-    };
 
     const handleToggleEnabled = () => {
       const newEnabled = !isEnabled();
@@ -1815,8 +1575,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
 
     const handlePointerMove = (clientX: number, clientY: number) => {
       if (
-        !isEnabled() ||
-        isPromptMode() ||
+        !isEnabled()  ||
         isToggleFrozen() ||
         store.contextMenuPosition !== null
       )
@@ -1916,10 +1675,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
       actions.freeze();
       actions.setLastGrabbed(firstElement);
 
-      if (store.pendingCommentMode) {
-        enterCommentModeForElement(firstElement, center.x, center.y);
-        return;
-      }
+
 
       if (isPendingContextMenuSelect) {
         isPendingContextMenuSelect = false;
@@ -1983,10 +1739,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
 
       keyboardSelectedElement = null;
 
-      if (store.pendingCommentMode) {
-        enterCommentModeForElement(element, positionX, positionY);
-        return;
-      }
+
 
       if (isPendingContextMenuSelect) {
         isPendingContextMenuSelect = false;
@@ -1995,7 +1748,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
         if (wasIntercepted) return;
 
         freezeAllAnimations([element]);
-        actions.setFrozenElement(element);
+        
         const position = { x: positionX, y: positionY };
         actions.setPointer(position);
         actions.freeze();
@@ -2078,7 +1831,6 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
       const shouldBlockEnter =
         isEnterKey &&
         isOverlayActive &&
-        !isPromptMode() &&
         !store.wasActivatedByToggle &&
         clearPromptPosition() === null;
 
@@ -2101,35 +1853,6 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
       capture: true,
     });
 
-    const handleUndoRedoKeys = (event: KeyboardEvent): boolean => {
-      const isUndoOrRedo =
-        event.code === "KeyZ" && (event.metaKey || event.ctrlKey);
-
-      if (!isUndoOrRedo) return false;
-
-      const hasActiveConfirmation = Array.from(
-        agentManager.sessions().values(),
-      ).some((session) => !session.isStreaming && !session.error);
-
-      if (hasActiveConfirmation) return false;
-
-      const isRedo = event.shiftKey;
-
-      if (isRedo && agentManager.canRedo()) {
-        event.preventDefault();
-        event.stopPropagation();
-        agentManager.history.redo();
-        return true;
-      } else if (!isRedo && agentManager.canUndo()) {
-        event.preventDefault();
-        event.stopPropagation();
-        agentManager.history.undo();
-        return true;
-      }
-
-      return false;
-    };
-
     const clearArrowNavigation = () => {
       setArrowNavigationElements([]);
       setArrowNavigationActiveIndex(0);
@@ -2137,7 +1860,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
     };
 
     const selectAndFocusElement = (element: Element) => {
-      actions.setFrozenElement(element);
+      
       actions.freeze();
       keyboardSelectedElement = element;
 
@@ -2173,7 +1896,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
     };
 
     const handleArrowNavigation = (event: KeyboardEvent): boolean => {
-      if (!isActivated() || isPromptMode()) return false;
+      if (!isActivated()) return false;
       if (!ARROW_KEYS.has(event.key)) return false;
 
       let currentElement = effectiveElement();
@@ -2228,7 +1951,6 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
       const copiedElement = store.lastCopiedElement;
       const canActivateFromCopied =
         !isHoldingKeys() &&
-        !isPromptMode() &&
         !isActivated() &&
         copiedElement &&
         isElementConnected(copiedElement) &&
@@ -2244,33 +1966,27 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
         const center = getBoundsCenter(createElementBounds(copiedElement));
 
         actions.setPointer(center);
-        preparePromptMode(copiedElement, center.x, center.y);
         actions.setFrozenElement(copiedElement);
         actions.clearLastCopied();
 
-        activatePromptMode();
         if (!isActivated()) {
           activateRenderer();
         }
         return true;
       }
 
-      const canActivateFromHolding = isHoldingKeys() && !isPromptMode();
+      const canActivateFromHolding = isHoldingKeys();
 
       if (canActivateFromHolding) {
         event.preventDefault();
         event.stopImmediatePropagation();
 
         const element = store.frozenElement || targetElement();
-        if (element) {
-          preparePromptMode(element, store.pointer.x, store.pointer.y);
-        }
 
         actions.setPointer({ x: store.pointer.x, y: store.pointer.y });
         if (element) {
-          actions.setFrozenElement(element);
+          
         }
-        activatePromptMode();
 
         if (keydownSpamTimerId !== null) {
           window.clearTimeout(keydownSpamTimerId);
@@ -2288,7 +2004,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
     };
 
     const handleOpenFileShortcut = (event: KeyboardEvent): boolean => {
-      if (event.key?.toLowerCase() !== "o" || isPromptMode()) return false;
+      if (event.key?.toLowerCase() !== "o" ) return false;
       if (!isActivated() || !(event.metaKey || event.ctrlKey)) return false;
 
       const filePath = store.selectionFilePath;
@@ -2329,8 +2045,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
       const element = selectionElement();
       return (
         Boolean(element) &&
-        isRendererActive() &&
-        !isPromptMode() &&
+        isRendererActive()  &&
         !isDragging() &&
         store.contextMenuPosition === null
       );
@@ -2499,7 +2214,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
         }
       }
 
-      if ((isActivated() || isHoldingKeys()) && !isPromptMode()) {
+      if ((isActivated() || isHoldingKeys()) ) {
         event.preventDefault();
         if (isEnterCode(event.code)) {
           event.stopImmediatePropagation();
@@ -2571,26 +2286,13 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
           return;
         }
 
-        if (handleUndoRedoKeys(event)) return;
+        
 
-        const isEnterToActivateInput =
-          isEnterCode(event.code) && isHoldingKeys() && !isPromptMode();
-
+        const isEnterToActivateInput = isEnterCode(event.code) && isHoldingKeys();
         const isFromReactGrabInput = isEventFromOverlay(
           event,
           "data-react-grab-input",
         );
-        if (
-          isPromptMode() &&
-          isTargetKeyCombination(event, pluginRegistry.store.options) &&
-          !event.repeat &&
-          !isFromReactGrabInput
-        ) {
-          event.preventDefault();
-          event.stopPropagation();
-          handleInputCancel();
-          return;
-        }
 
         if (event.key === "Escape" && clearPromptPosition() !== null) {
           return;
@@ -2632,15 +2334,9 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
           isEventFromOverlay(event, "data-react-grab-ignore-events") &&
           !isEnterToActivateInput;
 
-        if (isPromptMode() || isFromOverlay) {
+        if ( isFromOverlay) {
           if (event.key === "Escape") {
-            if (pendingAbortSessionId()) {
-              event.preventDefault();
-              event.stopPropagation();
-              actions.setPendingAbortSessionId(null);
-            } else if (isPromptMode()) {
-              handleInputCancel();
-            } else if (store.wasActivatedByToggle) {
+            if (store.wasActivatedByToggle) {
               deactivateRenderer();
             }
           }
@@ -2653,17 +2349,6 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
         }
 
         if (event.key === "Escape") {
-          if (pendingAbortSessionId()) {
-            event.preventDefault();
-            event.stopPropagation();
-            actions.setPendingAbortSessionId(null);
-            return;
-          }
-
-          if (agentManager.isProcessing()) {
-            return;
-          }
-
           if (isHoldingKeys() || store.wasActivatedByToggle) {
             deactivateRenderer();
             return;
@@ -2720,7 +2405,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
         }
 
         if (!isHoldingKeys() && !isActivated()) return;
-        if (isPromptMode()) return;
+        
 
         const hasCustomShortcut = Boolean(
           pluginRegistry.store.options.activationKey,
@@ -2814,7 +2499,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
         if (store.contextMenuPosition !== null) return;
         if (isTouchPointer && !isHoldingKeys() && !isActivated()) return;
         const isActiveState = isTouchPointer ? isHoldingKeys() : isActivated();
-        if (isActiveState && !isPromptMode() && isToggleFrozen()) {
+        if (isActiveState  && isToggleFrozen()) {
           actions.unfreeze();
           clearArrowNavigation();
         }
@@ -2832,23 +2517,6 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
         if (isEventFromOverlay(event, "data-react-grab-ignore-events")) return;
         if (store.contextMenuPosition !== null) return;
         if (toolbarMenuPosition() !== null) return;
-
-        if (isPromptMode()) {
-          const bounds = selectionBounds();
-          const isClickOnSelection =
-            bounds &&
-            event.clientX >= bounds.x &&
-            event.clientX <= bounds.x + bounds.width &&
-            event.clientY >= bounds.y &&
-            event.clientY <= bounds.y + bounds.height;
-
-          if (isClickOnSelection) {
-            void handleInputSubmit();
-          } else {
-            handleInputCancel();
-          }
-          return;
-        }
 
         const didHandle = handlePointerDown(event.clientX, event.clientY);
         if (didHandle) {
@@ -2881,7 +2549,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
     eventListenerManager.addWindowListener(
       "contextmenu",
       (event: MouseEvent) => {
-        if (!isRendererActive() || isCopying() || isPromptMode()) return;
+        if (!isRendererActive() || isCopying() ) return;
 
         const isFromOverlay = isEventFromOverlay(
           event,
@@ -2913,7 +2581,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
           freezeAllAnimations(existingFrozenElements);
         } else {
           freezeAllAnimations([element]);
-          actions.setFrozenElement(element);
+          
         }
 
         const position = { x: event.clientX, y: event.clientY };
@@ -2942,7 +2610,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
           event.preventDefault();
           event.stopImmediatePropagation();
 
-          if (store.wasActivatedByToggle && !isCopying() && !isPromptMode()) {
+          if (store.wasActivatedByToggle && !isCopying() ) {
             if (!isHoldingKeys()) {
               deactivateRenderer();
             } else {
@@ -2959,8 +2627,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
         actions.clearGrabbedBoxes();
         const storeActivationTimestamp = store.activationTimestamp;
         if (
-          isActivated() &&
-          !isPromptMode() &&
+          isActivated()  &&
           storeActivationTimestamp !== null &&
           Date.now() - storeActivationTimestamp > BLUR_DEACTIVATION_THRESHOLD_MS
         ) {
@@ -2985,8 +2652,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
     const redetectElementUnderPointer = () => {
       if (store.isTouchMode && !isHoldingKeys() && !isActivated()) return;
       if (
-        isEnabled() &&
-        !isPromptMode() &&
+        isEnabled()  &&
         !isToggleFrozen() &&
         !isDragging() &&
         store.contextMenuPosition === null &&
@@ -3004,7 +2670,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
       clearAllCaches();
       redetectElementUnderPointer();
       actions.incrementViewportVersion();
-      actions.updateSessionBounds();
+      
       actions.updateContextMenuPosition();
     };
 
@@ -3061,7 +2727,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
           isCopying() ||
           store.labelInstances.length > 0 ||
           store.grabbedBoxes.length > 0 ||
-          agentManager.sessions().size > 0);
+          false);
 
       if (shouldRunInterval && boundsRecalcIntervalId === null) {
         boundsRecalcIntervalId = window.setInterval(() => {
@@ -3070,7 +2736,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
           viewportChangeFrameId = nativeRequestAnimationFrame(() => {
             viewportChangeFrameId = null;
             actions.incrementViewportVersion();
-            actions.updateSessionBounds();
+            
           });
         }, BOUNDS_RECALC_INTERVAL_MS);
       } else if (!shouldRunInterval && boundsRecalcIntervalId !== null) {
@@ -3089,7 +2755,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
       void isCopying();
       void store.labelInstances.length;
       void store.grabbedBoxes.length;
-      void agentManager.sessions().size;
+      
       startBoundsRecalcIntervalIfNeeded();
     });
 
@@ -3106,7 +2772,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
       "copy",
       (event: ClipboardEvent) => {
         if (
-          isPromptMode() ||
+          
           isEventFromOverlay(event, "data-react-grab-ignore-events")
         ) {
           return;
@@ -3288,7 +2954,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
     const labelVisible = createMemo(() => {
       if (!isThemeEnabled()) return false;
       const themeEnabled = isElementLabelThemeEnabled();
-      const inPromptMode = isPromptMode();
+      
       const copying = isCopying();
       const rendererActive = isRendererActive();
       const dragging = isDragging();
@@ -3297,7 +2963,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
       const frozen = isToggleFrozen();
 
       if (!themeEnabled) return false;
-      if (inPromptMode) return false;
+      
       if (toolbarSelectHovered && !frozen) return false;
       if (copying) return true;
       return rendererActive && !dragging && hasElement;
@@ -3449,7 +3115,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
       shouldDeferHideContextMenu: boolean;
       onBeforeCopy?: () => void;
       onBeforePrompt?: () => void;
-      customEnterPromptMode?: (agent?: AgentOptions) => void;
+      
     }
 
     const buildActionContext = (
@@ -3466,7 +3132,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
         shouldDeferHideContextMenu,
         onBeforeCopy,
         onBeforePrompt,
-        customEnterPromptMode,
+        
       } = options;
 
       const elements =
@@ -3487,22 +3153,6 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
         hideContextMenuAction();
       };
 
-      const defaultEnterPromptMode = (agent?: AgentOptions) => {
-        if (agent) {
-          actions.setSelectedAgent(agent);
-        }
-        actions.clearLabelInstances();
-        onBeforePrompt?.();
-        preparePromptMode(element, position.x, position.y);
-        actions.setPointer({ x: position.x, y: position.y });
-        actions.setFrozenElement(element);
-        activatePromptMode();
-        if (!isActivated()) {
-          activateRenderer();
-        }
-        hideContextMenuAction();
-      };
-
       const context: ContextMenuActionContext = {
         element,
         elements,
@@ -3510,7 +3160,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
         lineNumber,
         componentName,
         tagName,
-        enterPromptMode: customEnterPromptMode ?? defaultEnterPromptMode,
+        
         copy: copyAction,
         hooks: {
           transformHtmlContent: pluginRegistry.hooks.transformHtmlContent,
@@ -3556,15 +3206,6 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
           shouldDeferHideContextMenu: true,
           onBeforeCopy: () => {
             keyboardSelectedElement = null;
-          },
-          customEnterPromptMode: (agent?: AgentOptions) => {
-            if (agent) {
-              actions.setSelectedAgent(agent);
-            }
-            actions.clearLabelInstances();
-            actions.clearInputText();
-            actions.enterPromptMode(position, element);
-            deferHideContextMenu();
           },
         });
       },
@@ -3617,7 +3258,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
             componentName: item.componentName,
             elementsCount: item.elementsCount,
             status: "idle",
-            isPromptMode: Boolean(hasCommentText),
+            
             inputValue: hasCommentText ? item.commentText : undefined,
             createdAt: 0,
             element: previewElement,
@@ -3804,7 +3445,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
 
       // HACK: defer to next frame so idle preview label clears visually before "copied" appears
       nativeRequestAnimationFrame(() => {
-        if (!isElementConnected(element)) return;
+        
         const bounds = createElementBounds(element);
         const instanceId = createLabelInstance(
           bounds,
@@ -3819,21 +3460,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
 
     const handleHistoryItemSelect = (item: HistoryItem) => {
       clearHistoryHoverPreviews();
-      if (isPromptMode()) {
-        actions.exitPromptMode();
-        actions.clearInputText();
-      }
-      const element = getFirstConnectedHistoryElement(item);
-
-      if (item.isComment && item.commentText && element) {
-        const bounds = createElementBounds(element);
-        const centerX = bounds.x + bounds.width / 2;
-        const centerY = bounds.y + bounds.height / 2;
-        actions.enterPromptMode({ x: centerX, y: centerY }, element);
-        actions.setInputText(item.commentText);
-      } else {
-        copyHistoryItemContent(item);
-      }
+      copyHistoryItemContent(item);
     };
 
     const handleHistoryItemRemove = (item: HistoryItem) => {
@@ -3970,13 +3597,13 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
       dismissHistoryDropdown();
     };
 
-    const handleShowContextMenuSession = (sessionId: string) => {
-      const session = agentManager.sessions().get(sessionId);
-      if (!session) return;
+    const handleShowContextMenuSession = () => {
+      
+      
 
-      const element = agentManager.session.getElement(sessionId);
-      if (!element) return;
-      if (!isElementConnected(element)) return;
+      
+      
+      
 
       // HACK: Defer context menu display to avoid event interference
       setTimeout(() => {
@@ -3984,10 +3611,10 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
           actions.setWasActivatedByToggle(true);
           activateRenderer();
         }
-        actions.setPointer(session.position);
-        actions.setFrozenElement(element);
+        
+        
         actions.freeze();
-        actions.showContextMenu(session.position, element);
+        
       }, DEFERRED_EXECUTION_DELAY_MS);
     };
 
@@ -4069,33 +3696,26 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
               isToggleFrozen() || isActivated() || isToolbarSelectHovered()
             }
             inputValue={store.inputText}
-            isPromptMode={isPromptMode()}
-            hasAgent={hasAgentProvider()}
-            isAgentConnected={store.isAgentConnected}
-            agentSessions={agentManager.sessions()}
-            supportsUndo={store.supportsUndo}
-            supportsFollowUp={store.supportsFollowUp}
-            dismissButtonText={store.dismissButtonText}
-            onDismissSession={agentManager.session.dismiss}
-            onUndoSession={agentManager.session.undo}
-            onFollowUpSubmitSession={handleFollowUpSubmit}
-            onAcknowledgeSessionError={handleAcknowledgeError}
-            onRetrySession={agentManager.session.retry}
-            onShowContextMenuSession={handleShowContextMenuSession}
-            onShowContextMenuInstance={handleShowContextMenuInstance}
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
             onLabelInstanceHoverChange={handleLabelInstanceHoverChange}
             onInputChange={actions.setInputText}
             onInputSubmit={() => void handleInputSubmit()}
             onInputCancel={handleInputCancel}
             onToggleExpand={handleToggleExpand}
-            isPendingDismiss={isPendingDismiss()}
-            onConfirmDismiss={handleConfirmDismiss}
-            onCancelDismiss={handleCancelDismiss}
-            pendingAbortSessionId={pendingAbortSessionId()}
-            onRequestAbortSession={(sessionId) =>
-              actions.setPendingAbortSessionId(sessionId)
-            }
-            onAbortSession={handleAgentAbort}
+            
             theme={pluginRegistry.store.theme}
             toolbarVisible={pluginRegistry.store.theme.toolbar.enabled}
             isActive={isActivated()}
@@ -4165,9 +3785,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
       }, rendererRoot);
     }
 
-    if (hasAgentProvider()) {
-      agentManager.session.tryResume();
-    }
+    
 
     const copyElementAPI = async (
       elements: Element | Element[],
@@ -4177,56 +3795,10 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
       return await copyWithFallback(elementsArray);
     };
 
-    const syncAgentFromRegistry = () => {
-      const agentOpts = getAgentOptionsWithCallbacks();
-      if (agentOpts) {
-        agentManager._internal.setOptions(agentOpts);
-      }
-      const hasProvider = Boolean(agentOpts?.provider);
-      actions.setHasAgentProvider(hasProvider);
-      if (hasProvider && agentOpts?.provider) {
-        const capturedProvider = agentOpts.provider;
-        actions.setAgentCapabilities({
-          supportsUndo: Boolean(capturedProvider.undo),
-          supportsFollowUp: Boolean(capturedProvider.supportsFollowUp),
-          dismissButtonText: capturedProvider.dismissButtonText,
-          isAgentConnected: false,
-        });
-
-        if (capturedProvider.checkConnection) {
-          capturedProvider
-            .checkConnection()
-            .then((isConnected) => {
-              const currentAgentOpts = getAgentOptionsWithCallbacks();
-              if (currentAgentOpts?.provider !== capturedProvider) {
-                return;
-              }
-              actions.setAgentCapabilities({
-                supportsUndo: Boolean(capturedProvider.undo),
-                supportsFollowUp: Boolean(capturedProvider.supportsFollowUp),
-                dismissButtonText: capturedProvider.dismissButtonText,
-                isAgentConnected: isConnected,
-              });
-            })
-            .catch(() => {
-              // Connection check failed - leave isAgentConnected as false
-            });
-        }
-
-        agentManager.session.tryResume();
-      } else {
-        actions.setAgentCapabilities({
-          supportsUndo: false,
-          supportsFollowUp: false,
-          dismissButtonText: undefined,
-          isAgentConnected: false,
-        });
-      }
-    };
+    
 
     const api: ReactGrabAPI = {
       activate: () => {
-        actions.setPendingCommentMode(false);
         if (!isActivated() && isEnabled()) {
           toggleActivate();
         }
@@ -4243,7 +3815,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
           toggleActivate();
         }
       },
-      comment: handleComment,
+      comment: () => {},
       isActive: () => isActivated(),
       isEnabled: () => isEnabled(),
       setEnabled: (enabled: boolean) => {
@@ -4302,7 +3874,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
         isActive: isActivated(),
         isDragging: isDragging(),
         isCopying: isCopying(),
-        isPromptMode: isPromptMode(),
+        
         isCrosshairVisible: crosshairVisible() ?? false,
         isSelectionBoxVisible: selectionVisible() ?? false,
         isDragBoxVisible: dragVisible() ?? false,
@@ -4328,11 +3900,11 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
       },
       registerPlugin: (plugin: Plugin) => {
         pluginRegistry.register(plugin, api);
-        syncAgentFromRegistry();
+        
       },
       unregisterPlugin: (name: string) => {
         pluginRegistry.unregister(name);
-        syncAgentFromRegistry();
+        
       },
       getPlugins: () => pluginRegistry.getPluginNames(),
       getDisplayName: getComponentDisplayName,
@@ -4362,12 +3934,7 @@ export type {
   ReactGrabRendererProps,
   ReactGrabAPI,
   SourceInfo,
-  AgentContext,
-  AgentSession,
-  AgentSessionStorage,
-  AgentProvider,
-  AgentCompleteResult,
-  AgentOptions,
+  
   SettableOptions,
   ContextMenuAction,
   ActionContext,

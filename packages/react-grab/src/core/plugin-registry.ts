@@ -9,7 +9,6 @@ import type {
   ToolbarMenuAction,
   ReactGrabAPI,
   ReactGrabState,
-  PromptModeContext,
   OverlayBounds,
   DragRect,
   ElementLabelVariant,
@@ -18,7 +17,6 @@ import type {
   ActivationMode,
   ActivationKey,
   SettableOptions,
-  AgentContext,
   ActionContext,
 } from "../types.js";
 import { DEFAULT_THEME, deepMergeTheme } from "./theme.js";
@@ -328,8 +326,6 @@ const createPluginRegistry = (initialOptions: SettableOptions = {}) => {
       callHook("onCopySuccess", elements, content),
     onCopyError: (error: Error) => callHook("onCopyError", error),
     onStateChange: (state: ReactGrabState) => callHook("onStateChange", state),
-    onPromptModeChange: (isPromptMode: boolean, context: PromptModeContext) =>
-      callHook("onPromptModeChange", isPromptMode, context),
     onSelectionBox: (
       visible: boolean,
       bounds: OverlayBounds | null,
@@ -353,8 +349,6 @@ const createPluginRegistry = (initialOptions: SettableOptions = {}) => {
       callHookWithHandled("onOpenFile", filePath, lineNumber),
     transformHtmlContent: async (html: string, elements: Element[]) =>
       callHookReduce("transformHtmlContent", html, elements),
-    transformAgentContext: async (context: AgentContext, elements: Element[]) =>
-      callHookReduce("transformAgentContext", context, elements),
     transformActionContext: (context: ActionContext) =>
       callHookReduceSync("transformActionContext", context),
     transformOpenFileUrl: (

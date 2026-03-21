@@ -83,7 +83,6 @@ export interface ReactGrabState {
   isActive: boolean;
   isDragging: boolean;
   isCopying: boolean;
-  isPromptMode: boolean;
   isCrosshairVisible: boolean;
   isSelectionBoxVisible: boolean;
   isDragBoxVisible: boolean;
@@ -111,12 +110,6 @@ export interface ReactGrabState {
 
 export type ElementLabelVariant = "hover" | "processing" | "success";
 
-export interface PromptModeContext {
-  x: number;
-  y: number;
-  targetElement: Element | null;
-}
-
 export interface CrosshairContext {
   x: number;
   y: number;
@@ -134,77 +127,6 @@ export interface ElementLabelContext {
 }
 
 export type ActivationKey = string | ((event: KeyboardEvent) => boolean);
-
-export interface AgentContext<T = unknown> {
-  content: string[];
-  prompt: string;
-  options?: T;
-  sessionId?: string;
-}
-
-export interface AgentSession {
-  id: string;
-  context: AgentContext;
-  lastStatus: string;
-  isStreaming: boolean;
-  isFading?: boolean;
-  createdAt: number;
-  lastUpdatedAt: number;
-  position: { x: number; y: number };
-  selectionBounds: OverlayBounds[];
-  tagName?: string;
-  componentName?: string;
-  error?: string;
-}
-
-export interface AgentProvider<T = unknown> {
-  send: (
-    context: AgentContext<T>,
-    signal: AbortSignal,
-  ) => AsyncIterable<string>;
-  resume?: (
-    sessionId: string,
-    signal: AbortSignal,
-    storage: AgentSessionStorage,
-  ) => AsyncIterable<string>;
-  abort?: (sessionId: string) => Promise<void>;
-  supportsResume?: boolean;
-  supportsFollowUp?: boolean;
-  dismissButtonText?: string;
-  checkConnection?: () => Promise<boolean>;
-  getCompletionMessage?: () => string | undefined;
-  undo?: () => Promise<void>;
-  canUndo?: () => boolean;
-  redo?: () => Promise<void>;
-  canRedo?: () => boolean;
-}
-
-export interface AgentSessionStorage {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-  removeItem(key: string): void;
-}
-
-export interface AgentCompleteResult {
-  error?: string;
-}
-
-export interface AgentOptions<T = unknown> {
-  provider?: AgentProvider<T>;
-  storage?: AgentSessionStorage | null;
-  getOptions?: () => T;
-  onStart?: (session: AgentSession, elements: Element[]) => void;
-  onStatus?: (status: string, session: AgentSession) => void;
-  onComplete?: (
-    session: AgentSession,
-    elements: Element[],
-  ) => AgentCompleteResult | void | Promise<AgentCompleteResult | void>;
-  onError?: (error: Error, session: AgentSession) => void;
-  onResume?: (session: AgentSession) => void;
-  onAbort?: (session: AgentSession, elements: Element[]) => void;
-  onUndo?: (session: AgentSession, elements: Element[]) => void;
-  onDismiss?: (session: AgentSession, elements: Element[]) => void;
-}
 
 export type ActivationMode = "toggle" | "hold";
 
@@ -225,7 +147,6 @@ export interface ActionContext {
   lineNumber?: number;
   componentName?: string;
   tagName?: string;
-  enterPromptMode?: (agent?: AgentOptions) => void;
   hooks: ActionContextHooks;
   performWithFeedback: (action: () => Promise<boolean>) => Promise<void>;
   hideContextMenu: () => void;
@@ -243,7 +164,6 @@ export interface ContextMenuAction {
   shortcut?: string;
   enabled?: boolean | ((context: ActionContext) => boolean);
   onAction: (context: ContextMenuActionContext) => void | Promise<void>;
-  agent?: AgentOptions;
 }
 
 export interface ActionCycleItem {
@@ -295,10 +215,6 @@ export interface PluginHooks {
   onCopySuccess?: (elements: Element[], content: string) => void;
   onCopyError?: (error: Error) => void;
   onStateChange?: (state: ReactGrabState) => void;
-  onPromptModeChange?: (
-    isPromptMode: boolean,
-    context: PromptModeContext,
-  ) => void;
   onSelectionBox?: (
     visible: boolean,
     bounds: OverlayBounds | null,
@@ -321,10 +237,6 @@ export interface PluginHooks {
     html: string,
     elements: Element[],
   ) => string | Promise<string>;
-  transformAgentContext?: (
-    context: AgentContext,
-    elements: Element[],
-  ) => AgentContext | Promise<AgentContext>;
   transformActionContext?: (context: ActionContext) => ActionContext;
   transformOpenFileUrl?: (
     url: string,
@@ -454,7 +366,6 @@ export interface SelectionLabelInstance {
   elementsCount?: number;
   status: SelectionLabelStatus;
   statusText?: string;
-  isPromptMode?: boolean;
   inputValue?: string;
   createdAt: number;
   element?: Element;
@@ -509,23 +420,6 @@ export interface ReactGrabRendererProps {
   crosshairVisible?: boolean;
   isFrozen?: boolean;
   inputValue?: string;
-  isPromptMode?: boolean;
-  replyToPrompt?: string;
-  hasAgent?: boolean;
-  isAgentConnected?: boolean;
-  agentSessions?: Map<string, AgentSession>;
-  supportsUndo?: boolean;
-  supportsFollowUp?: boolean;
-  dismissButtonText?: string;
-  onRequestAbortSession?: (sessionId: string) => void;
-  onAbortSession?: (sessionId: string, confirmed: boolean) => void;
-  onDismissSession?: (sessionId: string) => void;
-  onUndoSession?: (sessionId: string) => void;
-  onFollowUpSubmitSession?: (sessionId: string, prompt: string) => void;
-  onAcknowledgeSessionError?: (sessionId: string) => void;
-  onRetrySession?: (sessionId: string) => void;
-  onShowContextMenuSession?: (sessionId: string) => void;
-  onShowContextMenuInstance?: (instanceId: string) => void;
   onLabelInstanceHoverChange?: (instanceId: string, isHovered: boolean) => void;
   onInputChange?: (value: string) => void;
   onInputSubmit?: () => void;
@@ -644,20 +538,6 @@ export interface ErrorViewProps {
   onRetry?: () => void;
 }
 
-export interface CompletionViewProps {
-  statusText: string;
-  supportsUndo?: boolean;
-  supportsFollowUp?: boolean;
-  dismissButtonText?: string;
-  previousPrompt?: string;
-  onDismiss?: () => void;
-  onUndo?: () => void;
-  onFollowUpSubmit?: (prompt: string) => void;
-  onCopyStateChange?: () => void;
-  onFadingChange?: (isFading: boolean) => void;
-  onShowContextMenu?: () => void;
-}
-
 export interface SelectionLabelProps {
   tagName?: string;
   componentName?: string;
@@ -665,19 +545,11 @@ export interface SelectionLabelProps {
   selectionBounds?: OverlayBounds;
   mouseX?: number;
   visible?: boolean;
-  isPromptMode?: boolean;
   inputValue?: string;
-  replyToPrompt?: string;
-  previousPrompt?: string;
-  hasAgent?: boolean;
-  isAgentConnected?: boolean;
   status?: SelectionLabelStatus;
   statusText?: string;
   filePath?: string;
   lineNumber?: number;
-  supportsUndo?: boolean;
-  supportsFollowUp?: boolean;
-  dismissButtonText?: string;
   actionCycleState?: ActionCycleState;
   arrowNavigationState?: ArrowNavigationState;
   onArrowNavigationSelect?: (index: number) => void;
@@ -687,9 +559,6 @@ export interface SelectionLabelProps {
   onToggleExpand?: () => void;
   onAbort?: () => void;
   onOpen?: () => void;
-  onDismiss?: () => void;
-  onUndo?: () => void;
-  onFollowUpSubmit?: (prompt: string) => void;
   isPendingDismiss?: boolean;
   onConfirmDismiss?: () => void;
   onCancelDismiss?: () => void;

@@ -34,7 +34,6 @@ import { TagBadge } from "./tag-badge.js";
 import { BottomSection } from "./bottom-section.js";
 import { DiscardPrompt } from "./discard-prompt.js";
 import { ErrorView } from "./error-view.js";
-import { CompletionView } from "./completion-view.js";
 import { ArrowNavigationMenu } from "./arrow-navigation-menu.js";
 
 const DEFAULT_OFFSCREEN_POSITION = {
@@ -78,8 +77,7 @@ export const SelectionLabel: Component<SelectionLabelProps> = (props) => {
     props.status === "copied" || props.status === "fading";
 
   const shouldEnablePointerEvents = (): boolean => {
-    if (props.isPromptMode) return true;
-    if (isCompletedStatus() && (props.onDismiss || props.onShowContextMenu)) {
+    if (isCompletedStatus() && props.onShowContextMenu) {
       return true;
     }
     if (props.status === "copying" && props.onAbort) return true;
@@ -107,7 +105,7 @@ export const SelectionLabel: Component<SelectionLabelProps> = (props) => {
     if (isKeyboardEventTriggeredByInput(event)) return;
 
     const isEnterToExpand =
-      event.code === "Enter" && !props.isPromptMode && canInteract();
+      event.code === "Enter" && canInteract();
     const isCtrlCToAbort =
       event.code === "KeyC" &&
       event.ctrlKey &&
@@ -169,20 +167,7 @@ export const SelectionLabel: Component<SelectionLabelProps> = (props) => {
     }
   });
 
-  createEffect(() => {
-    if (props.isPromptMode && inputRef && props.onSubmit) {
-      // HACK: Defer focus one tick so the textarea is fully mounted.
-      const focusTimeout = setTimeout(() => {
-        if (inputRef) {
-          inputRef.focus();
-          autoResizeTextarea(inputRef, TEXTAREA_MAX_HEIGHT_PX);
-        }
-      }, DEFERRED_EXECUTION_DELAY_MS);
-      onCleanup(() => {
-        clearTimeout(focusTimeout);
-      });
-    }
-  });
+
 
   const positionComputation = createMemo(() => {
     viewportVersion();
@@ -345,14 +330,6 @@ export const SelectionLabel: Component<SelectionLabelProps> = (props) => {
 
   const handleContainerPointerDown = (event: PointerEvent) => {
     event.stopImmediatePropagation();
-    const isEditableInputVisible =
-      canInteract() &&
-      props.isPromptMode &&
-      !props.isPendingDismiss &&
-      props.onSubmit;
-    if (isEditableInputVisible && inputRef) {
-      inputRef.focus();
-    }
   };
 
   const shouldPersistDuringFade = () =>
@@ -396,23 +373,6 @@ export const SelectionLabel: Component<SelectionLabelProps> = (props) => {
           />
         </Show>
 
-        <Show when={isCompletedStatus() && !props.error}>
-          <CompletionView
-            statusText={
-              props.hasAgent ? (props.statusText ?? "Completed") : "Copied"
-            }
-            supportsUndo={props.supportsUndo}
-            supportsFollowUp={props.supportsFollowUp}
-            dismissButtonText={props.dismissButtonText}
-            previousPrompt={props.previousPrompt}
-            onDismiss={props.onDismiss}
-            onUndo={props.onUndo}
-            onFollowUpSubmit={props.onFollowUpSubmit}
-            onFadingChange={setIsInternalFading}
-            onShowContextMenu={props.onShowContextMenu}
-          />
-        </Show>
-
         <div
           ref={panelRef}
           class={cn(
@@ -426,9 +386,6 @@ export const SelectionLabel: Component<SelectionLabelProps> = (props) => {
           <Show when={props.status === "copying" && !props.isPendingAbort}>
             <div
               class="contain-layout shrink-0 flex flex-col justify-center items-start w-fit h-fit max-w-[280px]"
-              classList={{
-                "min-w-[150px]": Boolean(props.hasAgent && props.inputValue),
-              }}
             >
               <div class="contain-layout shrink-0 flex items-center gap-1 py-1.5 px-2 w-full h-fit">
                 <IconLoader size={13} class="text-[#71717a] shrink-0" />
@@ -436,41 +393,6 @@ export const SelectionLabel: Component<SelectionLabelProps> = (props) => {
                   {props.statusText ?? "Grabbing…"}
                 </span>
               </div>
-              <Show when={props.hasAgent && props.inputValue}>
-                <BottomSection>
-                  <div class="shrink-0 flex justify-between items-end w-full min-h-4">
-                    <textarea
-                      ref={inputRef}
-                      data-react-grab-ignore-events
-                      class="text-black text-[13px] leading-4 font-medium bg-transparent border-none outline-none resize-none flex-1 p-0 m-0 opacity-50 wrap-break-word overflow-y-auto"
-                      style={{
-                        "field-sizing": "content",
-                        "min-height": "16px",
-                        "max-height": `${TEXTAREA_MAX_HEIGHT_PX}px`,
-                        "scrollbar-width": "none",
-                      }}
-                      value={props.inputValue ?? ""}
-                      placeholder="Add context"
-                      rows={1}
-                      disabled
-                    />
-                    <Show when={props.onAbort}>
-                      <button
-                        data-react-grab-ignore-events
-                        data-react-grab-abort
-                        class="contain-layout shrink-0 flex items-center justify-center size-4 rounded-full bg-black cursor-pointer ml-1 interactive-scale"
-                        onPointerDown={(event) => event.stopPropagation()}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          props.onAbort?.();
-                        }}
-                      >
-                        <div class="size-1.5 bg-white rounded-[1px]" />
-                      </button>
-                    </Show>
-                  </div>
-                </BottomSection>
-              </Show>
             </div>
           </Show>
 
@@ -481,7 +403,7 @@ export const SelectionLabel: Component<SelectionLabelProps> = (props) => {
             />
           </Show>
 
-          <Show when={canInteract() && !props.isPromptMode}>
+          <Show when={canInteract()}>
             <div
               class="contain-layout shrink-0 flex flex-col items-start w-fit h-fit"
               classList={{ "min-w-[100px]": isArrowNavigationVisible() }}
@@ -545,67 +467,6 @@ export const SelectionLabel: Component<SelectionLabelProps> = (props) => {
                   </div>
                 </BottomSection>
               </Show>
-            </div>
-          </Show>
-
-          <Show
-            when={
-              canInteract() && props.isPromptMode && !props.isPendingDismiss
-            }
-          >
-            <div class="contain-layout shrink-0 flex flex-col justify-center items-start w-fit h-fit min-w-[150px] max-w-[280px]">
-              <div class="contain-layout shrink-0 flex items-center gap-1 pt-1.5 pb-1 w-fit h-fit px-2 max-w-full">
-                <TagBadge
-                  tagName={tagDisplay()}
-                  componentName={componentNameDisplay()}
-                  isClickable={isTagClickable()}
-                  onClick={handleTagClick}
-                  onHoverChange={handleTagHoverChange}
-                  forceShowIcon
-                />
-              </div>
-              <BottomSection>
-                <Show when={props.replyToPrompt}>
-                  <div class="flex items-center gap-1 w-full mb-1 overflow-hidden">
-                    <IconReply size={10} class="text-black/30 shrink-0" />
-                    <span class="text-black/40 text-[11px] leading-3 font-medium truncate italic">
-                      {props.replyToPrompt}
-                    </span>
-                  </div>
-                </Show>
-                <div
-                  class="shrink-0 flex justify-between items-end w-full min-h-4"
-                  style={{ "padding-left": props.replyToPrompt ? "14px" : "0" }}
-                >
-                  <textarea
-                    ref={inputRef}
-                    data-react-grab-ignore-events
-                    data-react-grab-input
-                    class="text-black text-[13px] leading-4 font-medium bg-transparent border-none outline-none resize-none flex-1 p-0 m-0 wrap-break-word overflow-y-auto"
-                    style={{
-                      "field-sizing": "content",
-                      "min-height": "16px",
-                      "max-height": `${TEXTAREA_MAX_HEIGHT_PX}px`,
-                      "scrollbar-width": "none",
-                    }}
-                    value={props.inputValue ?? ""}
-                    onInput={handleInput}
-                    onKeyDown={handleKeyDown}
-                    placeholder="Add context"
-                    rows={1}
-                    readOnly={!props.onSubmit}
-                  />
-                  <Show when={props.onSubmit}>
-                    <button
-                      data-react-grab-submit
-                      class="contain-layout shrink-0 flex items-center justify-center size-4 rounded-full bg-black cursor-pointer ml-1 interactive-scale"
-                      onClick={() => props.onSubmit?.()}
-                    >
-                      <IconSubmit size={10} class="text-white" />
-                    </button>
-                  </Show>
-                </div>
-              </BottomSection>
             </div>
           </Show>
 
