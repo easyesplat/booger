@@ -1380,13 +1380,17 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
     window.visualViewport?.addEventListener("resize", handleResize);
     window.visualViewport?.addEventListener("scroll", handleResize);
 
+    
+    /* // Do NOT default to having the toolbar visible
     const fadeInTimeout = setTimeout(() => {
       setIsVisible(true);
     }, TOOLBAR_FADE_IN_DELAY_MS);
+    
 
     onCleanup(() => {
       clearTimeout(fadeInTimeout);
     });
+    */
   });
 
   onCleanup(() => {
