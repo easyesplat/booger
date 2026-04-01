@@ -214,6 +214,30 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
       }
     };
 
+    // Attempt to block cross-host navigation so that user doesn't leave react-grab enabled pages 
+    document.addEventListener('click', function(e: MouseEvent) {
+      const targetElement = e.target as HTMLElement;
+      
+      if (!targetElement) return;
+      // Find the closest anchor tag that was clicked
+      const target = targetElement.closest('a');
+      
+      if (target && target.href) {
+        try {
+          const targetUrl = new URL(target.href);
+          const currentUrl = new URL(window.location.href);
+          
+          // If the hostnames don't match, block the navigation
+          if (targetUrl.hostname !== currentUrl.hostname) {
+            e.preventDefault();
+            window.parent.postMessage("crossHostNavBlocked", "*"); // notify front end
+          }
+        } catch (err) {
+          // Invalid URL, let it be or block it
+        }
+      }
+    }, true); // Use capture phase to ensure it runs first
+
     // Handle messages from parent site when this site is loaded in an iframe
     window.addEventListener('message', handleMessage);
 
