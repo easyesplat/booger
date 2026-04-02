@@ -206,10 +206,15 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
       switch (event.data) {
         case "beginSelection":
           actions.setWasActivatedByToggle(true);
+          actions.clearGrabbedBoxes();
           actions.activate();
           break;
         case "cancelSelection":
           actions.deactivate();
+          break;
+        case "clearHighlight":
+          actions.clearGrabbedBoxes();
+          actions.setDetectedElement(null);
           break;
       }
     };
@@ -230,7 +235,9 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
           // If the hostnames don't match, block the navigation
           if (targetUrl.hostname !== currentUrl.hostname) {
             e.preventDefault();
-            window.parent.postMessage("crossHostNavBlocked", "*"); // notify front end
+            window.parent.postMessage( { messageType: "crossHostNavBlocked" }, "*"); // notify front end
+          } else {
+            window.parent.postMessage( { messageType: "internalNavEvent", payload: targetUrl.pathname }, "*"); // notify front end
           }
         } catch (err) {
           // Invalid URL, let it be or block it
@@ -543,7 +550,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
       const timeoutId = window.setTimeout(() => {
         grabbedBoxTimeouts.delete(boxId);
         actions.removeGrabbedBox(boxId);
-      }, FEEDBACK_DURATION_MS);
+      }, 60*FEEDBACK_DURATION_MS);
       grabbedBoxTimeouts.set(boxId, timeoutId);
     };
 
@@ -681,7 +688,7 @@ export const init = (rawOptions?: Options): ReactGrabAPI => {
         setTimeout(() => {
           removeLabelInstance(instanceId);
         }, FADE_COMPLETE_BUFFER_MS);
-      }, FEEDBACK_DURATION_MS);
+      }, 1500); //FEEDBACK_DURATION_MS);
 
       labelFadeTimeouts.set(instanceId, timeoutId);
     };

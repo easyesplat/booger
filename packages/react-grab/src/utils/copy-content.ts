@@ -193,7 +193,7 @@ export const copyContent = (
 
   // Send message to parent site when loaded in iframe
   const notifyPlatform = (packet: SelectionData) => {
-    window.parent.postMessage(packet, "*");
+    window.parent.postMessage({ messageType: "elementSelection", payload: packet }, "*");
   };
 
   const copyHandler = (event: ClipboardEvent) => {

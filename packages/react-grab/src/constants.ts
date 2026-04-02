@@ -5,7 +5,7 @@ export const OFFSCREEN_POSITION = -1000;
 
 export const SELECTION_LERP_FACTOR = 0.95;
 
-export const FEEDBACK_DURATION_MS = 1500;
+export const FEEDBACK_DURATION_MS = 7200000;
 export const FADE_DURATION_MS = 100;
 export const FADE_COMPLETE_BUFFER_MS = 150;
 export const DISMISS_ANIMATION_BUFFER_MS = 50;
